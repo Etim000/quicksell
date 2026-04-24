@@ -34,13 +34,35 @@ const handleBuyService = async (service, user) => {
   try {
     const buyerSnap = await getDoc(doc(db, "users", user.uid));
     const buyerWallet = buyerSnap.data()?.wallet || 0;
+    
     if (buyerWallet < service.price) {
       alert("Insufficient funds! Add money to your wallet.");
       return;
     }
+    
+    let extraInfo = {};
+    
+    // Collect phone number for Airtime/Data
+    if (service.category === "Airtime" || service.category === "Data") {
+      const phoneNumber = prompt("Enter your phone number:");
+      if (!phoneNumber) return;
+      extraInfo.phoneNumber = phoneNumber;
+      extraInfo.network = service.category === "Airtime" ? service.title.split(" ")[0] : service.title.split(" ")[0];
+    }
+    
+    // Collect meter number for Bills
+    if (service.category === "Bills") {
+      const meterNumber = prompt("Enter your meter/account number:");
+      if (!meterNumber) return;
+      extraInfo.meterNumber = meterNumber;
+    }
+    
+    // Deduct from buyer wallet
     await updateDoc(doc(db, "users", user.uid), {
       wallet: buyerWallet - service.price
     });
+    
+    // Create order
     await addDoc(collection(db, "orders"), {
       serviceId: service.id,
       title: service.title,
@@ -50,13 +72,17 @@ const handleBuyService = async (service, user) => {
       sellerId: service.sellerId,
       type: "service",
       status: "pending",
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
+      ...extraInfo
     });
+    
     alert("Order placed! Seller will deliver soon.");
+    window.location.reload(); // Refresh to update wallet
   } catch (err) {
     alert("Error: " + err.message);
   }
 };
+
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -912,7 +938,19 @@ const OrdersPage = ({ user }) => {
               </div>
               
               <p style={{fontSize:"24px",fontWeight:"800",marginBottom:"16px",color:"#FF6B35"}}>₦{order.price?.toLocaleString()}</p>
-              
+              {order.phoneNumber && (
+  <div style={{padding:"12px",background:"#E3F2FD",borderRadius:"8px",marginBottom:"16px"}}>
+    <p style={{fontSize:"13px",color:"#1976D2",fontWeight:"600"}}>📱 Phone: {order.phoneNumber}</p>
+    {order.network && <p style={{fontSize:"13px",color:"#1976D2",fontWeight:"600"}}>📡 Network: {order.network}</p>}
+  </div>
+)}
+
+{order.meterNumber && (
+  <div style={{padding:"12px",background:"#FFF3E0",borderRadius:"8px",marginBottom:"16px"}}>
+    <p style={{fontSize:"13px",color:"#F57F17",fontWeight:"600"}}>⚡ Meter: {order.meterNumber}</p>
+  </div>
+)}
+
               {order.status === "pending" && (
                 <button onClick={() => confirmDelivery(order)} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>
                   Confirm Delivery

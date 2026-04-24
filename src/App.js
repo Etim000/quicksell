@@ -121,6 +121,8 @@ const AuthPage = ({ onLogin }) => {
 
 const Header = ({ user, section, setSection, setPage }) => {
   const [userData, setUserData] = useState(null);
+  const [showAddMoney, setShowAddMoney] = useState(false);
+  
   useEffect(() => {
     const load = async () => {
       const snap = await getDoc(doc(db, "users", user.uid));
@@ -128,6 +130,7 @@ const Header = ({ user, section, setSection, setPage }) => {
     };
     load();
   }, [user]);
+  
   return (
     <>
       <div style={{background:"white",borderBottom:"1px solid #f0f0f0",padding:"16px 20px",position:"sticky",top:0,zIndex:100}}>
@@ -135,10 +138,16 @@ const Header = ({ user, section, setSection, setPage }) => {
           <h1 onClick={() => setPage("browse")} style={{fontSize:"24px",fontWeight:"800",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",cursor:"pointer"}}>QuickSell</h1>
           <div style={{display:"flex",alignItems:"center",gap:"16px"}}>
             <div style={{fontSize:"14px",color:"#666"}}>Hi, <span style={{fontWeight:"600"}}>{userData?.name || "User"}</span></div>
-            <div style={{padding:"6px 12px",background:"#FFF5F2",borderRadius:"20px",fontSize:"13px",fontWeight:"600",color:"#FF6B35"}}>₦{(userData?.wallet || 0).toLocaleString()}</div>
+            <div 
+              onClick={() => setShowAddMoney(true)}
+              style={{padding:"6px 12px",background:"#FFF5F2",borderRadius:"20px",fontSize:"13px",fontWeight:"600",color:"#FF6B35",cursor:"pointer"}}
+            >
+              ₦{(userData?.wallet || 0).toLocaleString()}
+            </div>
           </div>
         </div>
       </div>
+      
       <div style={{background:"white",borderBottom:"1px solid #f0f0f0",padding:"12px 20px",position:"sticky",top:"66px",zIndex:99}}>
         <div style={{display:"flex",gap:"12px",maxWidth:"1200px",margin:"0 auto"}}>
           {["products", "services", "tickets"].map(s => (
@@ -148,9 +157,12 @@ const Header = ({ user, section, setSection, setPage }) => {
           ))}
         </div>
       </div>
+      
+      {showAddMoney && <AddMoneyModal user={user} onClose={() => setShowAddMoney(false)} />}
     </>
   );
 };
+
 const PRODUCT_CATEGORIES = ["All", "Campus", "Food", "Thrift", "Clothes", "Accessories", "Electronics", "Other"];
 const SERVICE_CATEGORIES = ["All", "Airtime", "Data", "Skills", "Bills"];
 
@@ -645,6 +657,109 @@ const TicketsMyListings = ({ user }) => {
           ))}
         </div>
       )}
+    </div>
+  );
+};
+const AddMoneyModal = ({ user, onClose }) => {
+  const [amount, setAmount] = useState("");
+  const [screenshot, setScreenshot] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  
+  const handleScreenshotChange = (e) => {
+    if (e.target.files[0]) setScreenshot(e.target.files[0]);
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    
+    if (!amount || !screenshot) {
+      setError("Please enter amount and upload payment proof");
+      return;
+    }
+    
+    setUploading(true);
+    
+    try {
+      // Upload screenshot
+      const screenshotRef = ref(storage, `deposits/${user.uid}/${Date.now()}_${screenshot.name}`);
+      await uploadBytes(screenshotRef, screenshot);
+      const screenshotUrl = await getDownloadURL(screenshotRef);
+      
+      // Create deposit request
+      await addDoc(collection(db, "deposits"), {
+        userId: user.uid,
+        amount: parseFloat(amount),
+        screenshotUrl,
+        status: "pending",
+        createdAt: serverTimestamp()
+      });
+      
+      alert("Deposit request submitted! You'll be credited once approved.");
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    }
+    
+    setUploading(false);
+  };
+  
+  return (
+    <div onClick={onClose} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"20px"}}>
+      <div onClick={(e) => e.stopPropagation()} style={{background:"white",borderRadius:"16px",padding:"32px",maxWidth:"500px",width:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <h2 style={{fontSize:"24px",fontWeight:"800",marginBottom:"24px"}}>Add Money to Wallet</h2>
+        
+        <div style={{padding:"20px",background:"#FFF5F2",borderRadius:"12px",marginBottom:"24px"}}>
+          <p style={{fontSize:"14px",fontWeight:"700",color:"#FF6B35",marginBottom:"12px"}}>TRANSFER TO:</p>
+          <p style={{fontSize:"16px",fontWeight:"700",marginBottom:"4px"}}>Bank: OPay</p>
+          <p style={{fontSize:"16px",fontWeight:"700",marginBottom:"4px"}}>Account: 9020853814</p>
+          <p style={{fontSize:"16px",fontWeight:"700"}}>Name: Emmanuel Etim Kelvin</p>
+        </div>
+        
+        <form onSubmit={handleSubmit}>
+          <div style={{marginBottom:"20px"}}>
+            <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Amount Sent (₦)</label>
+            <input 
+              type="number" 
+              value={amount} 
+              onChange={(e) => setAmount(e.target.value)} 
+              placeholder="5000"
+              style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"15px"}}
+            />
+          </div>
+          
+          <div style={{marginBottom:"20px"}}>
+            <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Upload Payment Proof</label>
+            <input 
+              type="file" 
+              accept="image/*" 
+              onChange={handleScreenshotChange}
+              style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"15px"}}
+            />
+            {screenshot && <p style={{marginTop:"10px",fontSize:"14px",color:"#4CAF50",fontWeight:"600"}}>✓ {screenshot.name}</p>}
+          </div>
+          
+          {error && <div style={{color:"#d32f2f",marginBottom:"20px",fontSize:"14px",padding:"14px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
+          
+          <div style={{display:"flex",gap:"12px"}}>
+            <button 
+              type="button" 
+              onClick={onClose}
+              style={{flex:1,padding:"16px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"16px",fontWeight:"700",cursor:"pointer"}}
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              disabled={uploading}
+              style={{flex:1,padding:"16px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"16px",fontWeight:"700",cursor:uploading?"not-allowed":"pointer"}}
+            >
+              {uploading ? "Submitting..." : "Submit"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };

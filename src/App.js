@@ -3,6 +3,60 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, on
 import { collection, addDoc, doc, setDoc, getDoc, query, orderBy, onSnapshot, serverTimestamp, where, deleteDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
+const handleBuyProduct = async (product, user) => {
+  try {
+    const buyerSnap = await getDoc(doc(db, "users", user.uid));
+    const buyerWallet = buyerSnap.data()?.wallet || 0;
+    if (buyerWallet < product.price) {
+      alert("Insufficient funds! Add money to your wallet.");
+      return;
+    }
+    await updateDoc(doc(db, "users", user.uid), {
+      wallet: buyerWallet - product.price
+    });
+    await addDoc(collection(db, "orders"), {
+      productId: product.id,
+      title: product.title,
+      price: product.price,
+      buyerId: user.uid,
+      sellerId: product.sellerId,
+      type: "product",
+      status: "pending",
+      createdAt: serverTimestamp()
+    });
+    alert("Order placed! Seller will deliver soon.");
+  } catch (err) {
+    alert("Error: " + err.message);
+  }
+};
+
+const handleBuyService = async (service, user) => {
+  try {
+    const buyerSnap = await getDoc(doc(db, "users", user.uid));
+    const buyerWallet = buyerSnap.data()?.wallet || 0;
+    if (buyerWallet < service.price) {
+      alert("Insufficient funds! Add money to your wallet.");
+      return;
+    }
+    await updateDoc(doc(db, "users", user.uid), {
+      wallet: buyerWallet - service.price
+    });
+    await addDoc(collection(db, "orders"), {
+      serviceId: service.id,
+      title: service.title,
+      price: service.price,
+      category: service.category,
+      buyerId: user.uid,
+      sellerId: service.sellerId,
+      type: "service",
+      status: "pending",
+      createdAt: serverTimestamp()
+    });
+    alert("Order placed! Seller will deliver soon.");
+  } catch (err) {
+    alert("Error: " + err.message);
+  }
+};
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -46,7 +100,9 @@ const App = () => {
         </>
       )}
       {page === "profile" && <ProfilePage user={user} />}
-      <NavBar page={page} setPage={setPage} />
+{page === "orders" && <OrdersPage user={user} />}
+<NavBar page={page} setPage={setPage} />
+
     </div>
   );
 };
@@ -242,7 +298,14 @@ const ProductDetail = ({ product, user, onBack }) => {
             </div>
           )}
           {product.sellerId !== user.uid && (
-            <button onClick={() => alert("Chat coming soon!")} style={{marginTop:"32px",width:"100%",padding:"18px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700",cursor:"pointer"}}>Contact Seller</button>
+            <button onClick={() => {
+  if (window.confirm(`Buy ${product.title} for ₦${product.price?.toLocaleString()}?`)) {
+    handleBuyProduct(product, user);
+  }
+}} style={{marginTop:"32px",width:"100%",padding:"18px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700",cursor:"pointer"}}>
+  Buy Now - ₦{product.price?.toLocaleString()}
+</button>
+
           )}
         </div>
       </div>
@@ -790,12 +853,91 @@ const ProfilePage = ({ user }) => {
     </div>
   );
 };
+const OrdersPage = ({ user }) => {
+  const [orders, setOrders] = useState([]);
+  
+  useEffect(() => {
+    const q = query(collection(db, "orders"), where("buyerId", "==", user.uid), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [user]);
+  
+  const confirmDelivery = async (order) => {
+    if (!window.confirm("Confirm you received this?")) return;
+    
+    try {
+      // Update order status
+      await updateDoc(doc(db, "orders", order.id), {
+        status: "completed",
+        completedAt: serverTimestamp()
+      });
+      
+      // Pay seller
+      const sellerSnap = await getDoc(doc(db, "users", order.sellerId));
+      const sellerWallet = sellerSnap.data()?.wallet || 0;
+      
+      await updateDoc(doc(db, "users", order.sellerId), {
+        wallet: sellerWallet + order.price,
+        totalSales: (sellerSnap.data()?.totalSales || 0) + 1
+      });
+      
+      alert("Delivery confirmed! Seller has been paid.");
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  };
+  
+  return (
+    <div style={{maxWidth:"800px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
+      <h2 style={{fontSize:"28px",fontWeight:"800",marginBottom:"24px"}}>My Orders</h2>
+      
+      {orders.length === 0 ? (
+        <div style={{textAlign:"center",padding:"80px 20px",background:"white",borderRadius:"16px"}}>
+          <p style={{fontSize:"18px",color:"#666"}}>No orders yet</p>
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:"16px"}}>
+          {orders.map(order => (
+            <div key={order.id} style={{background:"white",padding:"24px",borderRadius:"16px",boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"start",marginBottom:"16px"}}>
+                <div>
+                  <h3 style={{fontSize:"18px",fontWeight:"700",marginBottom:"4px"}}>{order.title}</h3>
+                  <p style={{fontSize:"13px",color:"#999"}}>{order.createdAt?.toDate().toLocaleString()}</p>
+                </div>
+                <div style={{padding:"6px 12px",background:order.status==="completed"?"#E8F5E9":"#FFF9C4",borderRadius:"12px",fontSize:"12px",fontWeight:"700",color:order.status==="completed"?"#4CAF50":"#F57F17"}}>
+                  {order.status}
+                </div>
+              </div>
+              
+              <p style={{fontSize:"24px",fontWeight:"800",marginBottom:"16px",color:"#FF6B35"}}>₦{order.price?.toLocaleString()}</p>
+              
+              {order.status === "pending" && (
+                <button onClick={() => confirmDelivery(order)} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>
+                  Confirm Delivery
+                </button>
+              )}
+              
+              {order.status === "completed" && (
+                <div style={{padding:"14px",background:"#E8F5E9",borderRadius:"8px",textAlign:"center"}}>
+                  <p style={{fontSize:"14px",fontWeight:"600",color:"#4CAF50"}}>✓ Completed</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const NavBar = ({ page, setPage }) => {
   const icons = {
     browse: <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>,
     sell: <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>,
     mylistings: <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>,
+    orders: <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>,
     profile: <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
   };
   return (
@@ -804,6 +946,7 @@ const NavBar = ({ page, setPage }) => {
         { key: "browse", label: "Browse" },
         { key: "sell", label: "Sell" },
         { key: "mylistings", label: "Listings" },
+        { key: "orders", label: "Orders" },
         { key: "profile", label: "Profile" }
       ].map(item => (
         <button key={item.key} onClick={() => setPage(item.key)} style={{background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px",cursor:"pointer",color:page===item.key?"#FF6B35":"#999",fontWeight:page===item.key?"700":"400",padding:"8px"}}>
@@ -814,5 +957,6 @@ const NavBar = ({ page, setPage }) => {
     </div>
   );
 };
+
 
 export default App;

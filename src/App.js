@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { collection, addDoc, doc, setDoc, getDoc, query, orderBy, onSnapshot, serverTimestamp, where, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, doc, setDoc, getDoc, query, orderBy, onSnapshot, serverTimestamp, where, deleteDoc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
+
+const PRODUCT_CATEGORIES = ["All", "Campus", "Food", "Thrift", "Clothes", "Accessories", "Electronics", "Other"];
+const SERVICE_CATEGORIES = ["All", "Airtime", "Data", "Skills", "Bills"];
+
 const handleBuyProduct = async (product, user) => {
   try {
     const buyerSnap = await getDoc(doc(db, "users", user.uid));
@@ -25,6 +29,7 @@ const handleBuyProduct = async (product, user) => {
       createdAt: serverTimestamp()
     });
     alert("Order placed! Seller will deliver soon.");
+    window.location.reload();
   } catch (err) {
     alert("Error: " + err.message);
   }
@@ -34,35 +39,24 @@ const handleBuyService = async (service, user) => {
   try {
     const buyerSnap = await getDoc(doc(db, "users", user.uid));
     const buyerWallet = buyerSnap.data()?.wallet || 0;
-    
     if (buyerWallet < service.price) {
       alert("Insufficient funds! Add money to your wallet.");
       return;
     }
-    
     let extraInfo = {};
-    
-    // Collect phone number for Airtime/Data
     if (service.category === "Airtime" || service.category === "Data") {
       const phoneNumber = prompt("Enter your phone number:");
       if (!phoneNumber) return;
       extraInfo.phoneNumber = phoneNumber;
-      extraInfo.network = service.category === "Airtime" ? service.title.split(" ")[0] : service.title.split(" ")[0];
     }
-    
-    // Collect meter number for Bills
     if (service.category === "Bills") {
-      const meterNumber = prompt("Enter your meter/account number:");
-      if (!meterNumber) return;
-      extraInfo.meterNumber = meterNumber;
+      const accountNumber = prompt("Enter your meter/smartcard number:");
+      if (!accountNumber) return;
+      extraInfo.accountNumber = accountNumber;
     }
-    
-    // Deduct from buyer wallet
     await updateDoc(doc(db, "users", user.uid), {
       wallet: buyerWallet - service.price
     });
-    
-    // Create order
     await addDoc(collection(db, "orders"), {
       serviceId: service.id,
       title: service.title,
@@ -75,21 +69,18 @@ const handleBuyService = async (service, user) => {
       createdAt: serverTimestamp(),
       ...extraInfo
     });
-    
     alert("Order placed! Seller will deliver soon.");
-    window.location.reload(); // Refresh to update wallet
+    window.location.reload();
   } catch (err) {
     alert("Error: " + err.message);
   }
 };
-
 
 const App = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [section, setSection] = useState("products");
   const [page, setPage] = useState("browse");
-  
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -97,10 +88,8 @@ const App = () => {
     });
     return () => unsub();
   }, []);
-  
   if (loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>Loading...</div>;
   if (!user) return <AuthPage onLogin={setUser} />;
-  
   return (
     <div style={{background:"#f5f5f5",minHeight:"100vh"}}>
       <Header user={user} section={section} setSection={setSection} setPage={setPage} />
@@ -126,9 +115,8 @@ const App = () => {
         </>
       )}
       {page === "profile" && <ProfilePage user={user} />}
-{page === "orders" && <OrdersPage user={user} />}
-<NavBar page={page} setPage={setPage} />
-
+      {page === "orders" && <OrdersPage user={user} />}
+      <NavBar page={page} setPage={setPage} />
     </div>
   );
 };
@@ -140,7 +128,6 @@ const AuthPage = ({ onLogin }) => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -171,7 +158,6 @@ const AuthPage = ({ onLogin }) => {
     }
     setLoading(false);
   };
-  
   return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"linear-gradient(135deg, #FFF5F2 0%, #FFE5DC 100%)",padding:"20px"}}>
       <div style={{background:"white",padding:"40px",borderRadius:"12px",boxShadow:"0 4px 20px rgba(255,107,53,0.15)",width:"100%",maxWidth:"420px"}}>
@@ -200,19 +186,15 @@ const AuthPage = ({ onLogin }) => {
     </div>
   );
 };
-
 const Header = ({ user, section, setSection, setPage }) => {
   const [userData, setUserData] = useState(null);
   const [showAddMoney, setShowAddMoney] = useState(false);
-  
   useEffect(() => {
-    const load = async () => {
-      const snap = await getDoc(doc(db, "users", user.uid));
+    const unsub = onSnapshot(doc(db, "users", user.uid), (snap) => {
       if (snap.exists()) setUserData(snap.data());
-    };
-    load();
+    });
+    return () => unsub();
   }, [user]);
-  
   return (
     <>
       <div style={{background:"white",borderBottom:"1px solid #f0f0f0",padding:"16px 20px",position:"sticky",top:0,zIndex:100}}>
@@ -220,16 +202,12 @@ const Header = ({ user, section, setSection, setPage }) => {
           <h1 onClick={() => setPage("browse")} style={{fontSize:"24px",fontWeight:"800",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",cursor:"pointer"}}>QuickSell</h1>
           <div style={{display:"flex",alignItems:"center",gap:"16px"}}>
             <div style={{fontSize:"14px",color:"#666"}}>Hi, <span style={{fontWeight:"600"}}>{userData?.name || "User"}</span></div>
-            <div 
-              onClick={() => setShowAddMoney(true)}
-              style={{padding:"6px 12px",background:"#FFF5F2",borderRadius:"20px",fontSize:"13px",fontWeight:"600",color:"#FF6B35",cursor:"pointer"}}
-            >
+            <div onClick={() => setShowAddMoney(true)} style={{padding:"6px 12px",background:"#FFF5F2",borderRadius:"20px",fontSize:"13px",fontWeight:"600",color:"#FF6B35",cursor:"pointer"}}>
               ₦{(userData?.wallet || 0).toLocaleString()}
             </div>
           </div>
         </div>
       </div>
-      
       <div style={{background:"white",borderBottom:"1px solid #f0f0f0",padding:"12px 20px",position:"sticky",top:"66px",zIndex:99}}>
         <div style={{display:"flex",gap:"12px",maxWidth:"1200px",margin:"0 auto"}}>
           {["products", "services", "tickets"].map(s => (
@@ -239,14 +217,75 @@ const Header = ({ user, section, setSection, setPage }) => {
           ))}
         </div>
       </div>
-      
       {showAddMoney && <AddMoneyModal user={user} onClose={() => setShowAddMoney(false)} />}
     </>
   );
 };
 
-const PRODUCT_CATEGORIES = ["All", "Campus", "Food", "Thrift", "Clothes", "Accessories", "Electronics", "Other"];
-const SERVICE_CATEGORIES = ["All", "Airtime", "Data", "Skills", "Bills"];
+const AddMoneyModal = ({ user, onClose }) => {
+  const [amount, setAmount] = useState("");
+  const [screenshot, setScreenshot] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const handleScreenshotChange = (e) => { if (e.target.files[0]) setScreenshot(e.target.files[0]); };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!amount || !screenshot) {
+      setError("Please enter amount and upload payment proof");
+      return;
+    }
+    setUploading(true);
+    try {
+      const screenshotRef = ref(storage, `deposits/${user.uid}/${Date.now()}_${screenshot.name}`);
+      await uploadBytes(screenshotRef, screenshot);
+      const screenshotUrl = await getDownloadURL(screenshotRef);
+      await addDoc(collection(db, "deposits"), {
+        userId: user.uid,
+        amount: parseFloat(amount),
+        screenshotUrl,
+        status: "pending",
+        createdAt: serverTimestamp()
+      });
+      alert("Deposit request submitted! You'll be credited once approved.");
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    }
+    setUploading(false);
+  };
+  return (
+    <div onClick={onClose} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"20px"}}>
+      <div onClick={(e) => e.stopPropagation()} style={{background:"white",borderRadius:"16px",padding:"32px",maxWidth:"500px",width:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <h2 style={{fontSize:"24px",fontWeight:"800",marginBottom:"24px"}}>Add Money to Wallet</h2>
+        <div style={{padding:"20px",background:"#FFF5F2",borderRadius:"12px",marginBottom:"24px"}}>
+          <p style={{fontSize:"14px",fontWeight:"700",color:"#FF6B35",marginBottom:"12px"}}>TRANSFER TO:</p>
+          <p style={{fontSize:"16px",fontWeight:"700",marginBottom:"4px"}}>Bank: OPay</p>
+          <p style={{fontSize:"16px",fontWeight:"700",marginBottom:"4px"}}>Account: 9020853814</p>
+          <p style={{fontSize:"16px",fontWeight:"700"}}>Name: Emmanuel Etim Kelvin</p>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{marginBottom:"20px"}}>
+            <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Amount Sent (₦)</label>
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5000" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"15px"}} />
+          </div>
+          <div style={{marginBottom:"20px"}}>
+            <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Upload Payment Proof</label>
+            <input type="file" accept="image/*" onChange={handleScreenshotChange} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"15px"}} />
+            {screenshot && <p style={{marginTop:"10px",fontSize:"14px",color:"#4CAF50",fontWeight:"600"}}>✓ {screenshot.name}</p>}
+          </div>
+          {error && <div style={{color:"#d32f2f",marginBottom:"20px",fontSize:"14px",padding:"14px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
+          <div style={{display:"flex",gap:"12px"}}>
+            <button type="button" onClick={onClose} style={{flex:1,padding:"16px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"16px",fontWeight:"700",cursor:"pointer"}}>Cancel</button>
+            <button type="submit" disabled={uploading} style={{flex:1,padding:"16px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"16px",fontWeight:"700",cursor:uploading?"not-allowed":"pointer"}}>
+              {uploading ? "Submitting..." : "Submit"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 const ProductsBrowse = ({ user }) => {
   const [products, setProducts] = useState([]);
@@ -255,9 +294,7 @@ const ProductsBrowse = ({ user }) => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   useEffect(() => {
     const q = query(collection(db, "products"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const unsub = onSnapshot(q, (snap) => { setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
     return () => unsub();
   }, []);
   const filtered = products.filter(p => {
@@ -275,9 +312,7 @@ const ProductsBrowse = ({ user }) => {
         ))}
       </div>
       {filtered.length === 0 ? (
-        <div style={{textAlign:"center",padding:"80px 20px",background:"white",borderRadius:"16px"}}>
-          <p style={{fontSize:"18px",color:"#666"}}>No products found</p>
-        </div>
+        <div style={{textAlign:"center",padding:"80px 20px",background:"white",borderRadius:"16px"}}><p>No products found</p></div>
       ) : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))",gap:"20px"}}>
           {filtered.map(product => (
@@ -324,21 +359,15 @@ const ProductDetail = ({ product, user, onBack }) => {
             </div>
           )}
           {product.sellerId !== user.uid && (
-            <button onClick={() => {
-  if (window.confirm(`Buy ${product.title} for ₦${product.price?.toLocaleString()}?`)) {
-    handleBuyProduct(product, user);
-  }
-}} style={{marginTop:"32px",width:"100%",padding:"18px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700",cursor:"pointer"}}>
-  Buy Now - ₦{product.price?.toLocaleString()}
-</button>
-
+            <button onClick={() => { if (window.confirm(`Buy ${product.title} for ₦${product.price?.toLocaleString()}?`)) { handleBuyProduct(product, user); }}} style={{marginTop:"32px",width:"100%",padding:"18px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700",cursor:"pointer"}}>
+              Buy Now - ₦{product.price?.toLocaleString()}
+            </button>
           )}
         </div>
       </div>
     </div>
   );
 };
-
 const ProductsSell = ({ user, setPage }) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -386,9 +415,7 @@ const ProductsSell = ({ user, setPage }) => {
         <div style={{marginBottom:"24px"}}>
           <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Category</label>
           <select value={category} onChange={(e) => setCategory(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"15px"}}>
-            {PRODUCT_CATEGORIES.filter(c => c !== "All").map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
+            {PRODUCT_CATEGORIES.filter(c => c !== "All").map(cat => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </div>
         <div style={{marginBottom:"24px"}}>
@@ -465,11 +492,24 @@ const ServicesBrowse = ({ user }) => {
       ) : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))",gap:"20px"}}>
           {filtered.map(service => (
-            <div key={service.id} style={{background:"white",borderRadius:"12px",overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,0.08)",cursor:"pointer"}}>
+            <div key={service.id} onClick={() => {
+              if (service.sellerId === user.uid) {
+                alert("This is your own service!");
+              } else {
+                if (window.confirm(`Buy ${service.title} for ₦${service.price?.toLocaleString()}?`)) {
+                  handleBuyService(service, user);
+                }
+              }
+            }} style={{background:"white",borderRadius:"12px",overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,0.08)",cursor:"pointer"}}>
               <div style={{padding:"20px"}}>
                 <div style={{display:"inline-block",padding:"5px 12px",background:"#E8F5E9",borderRadius:"12px",fontSize:"11px",fontWeight:"700",color:"#4CAF50",marginBottom:"10px"}}>{service.category}</div>
                 <h3 style={{fontSize:"17px",fontWeight:"700",marginBottom:"10px"}}>{service.title}</h3>
                 <p style={{fontSize:"24px",fontWeight:"800",color:"#4CAF50"}}>₦{service.price?.toLocaleString()}</p>
+                {service.sellerId === user.uid && (
+                  <div style={{marginTop:"12px",padding:"8px",background:"#FFF9C4",borderRadius:"8px",textAlign:"center"}}>
+                    <p style={{fontSize:"12px",fontWeight:"700",color:"#F57F17"}}>Your Service</p>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -486,71 +526,47 @@ const ServicesSell = ({ user, setPage }) => {
   const [price, setPrice] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
-  
-  // For Airtime
   const [network, setNetwork] = useState("MTN");
   const [airtimeAmount, setAirtimeAmount] = useState("100");
-  
-  // For Data
   const [dataNetwork, setDataNetwork] = useState("MTN");
   const [dataPlan, setDataPlan] = useState("1GB - ₦500");
-  
+  const [billType, setBillType] = useState("NEPA");
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    
     let finalTitle = title;
     let finalDescription = description;
-    
-    // Auto-generate for Airtime
     if (category === "Airtime") {
       finalTitle = `${network} ₦${airtimeAmount} Airtime`;
       if (!description.trim()) finalDescription = `${network} airtime recharge of ₦${airtimeAmount}`;
     }
-    
-    // Auto-generate for Data
     if (category === "Data") {
       finalTitle = `${dataNetwork} ${dataPlan.split(' - ')[0]} Data`;
       if (!description.trim()) finalDescription = `${dataNetwork} data bundle - ${dataPlan}`;
     }
-    
-    if (!finalTitle.trim() || !finalDescription.trim() || !price) { 
-      setError("Fill all fields"); 
-      return; 
+    if (category === "Bills") {
+      finalTitle = `${billType} Bill Payment`;
+      if (!description.trim()) finalDescription = `Pay your ${billType} bill instantly`;
     }
-    
+    if (!finalTitle.trim() || !finalDescription.trim() || !price) { setError("Fill all fields"); return; }
     setUploading(true);
     try {
-      await addDoc(collection(db, "services"), { 
-        title: finalTitle.trim(), 
-        description: finalDescription.trim(), 
-        price: parseFloat(price), 
-        category, 
-        sellerId: user.uid, 
-        createdAt: serverTimestamp(), 
-        status: "active" 
-      });
+      await addDoc(collection(db, "services"), { title: finalTitle.trim(), description: finalDescription.trim(), price: parseFloat(price), category, sellerId: user.uid, createdAt: serverTimestamp(), status: "active" });
       alert("Service listed!");
       setPage("mylistings");
-    } catch (err) { 
-      setError(err.message); 
-    }
+    } catch (err) { setError(err.message); }
     setUploading(false);
   };
-  
   return (
     <div style={{maxWidth:"600px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
       <h2 style={{fontSize:"28px",fontWeight:"800",marginBottom:"24px"}}>Offer Service</h2>
       <form onSubmit={handleSubmit} style={{background:"white",padding:"32px",borderRadius:"16px",boxShadow:"0 4px 20px rgba(0,0,0,0.08)"}}>
-        
         <div style={{marginBottom:"24px"}}>
           <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Service Type</label>
           <select value={category} onChange={(e) => setCategory(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
             {SERVICE_CATEGORIES.filter(c => c !== "All").map(cat => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </div>
-        
-        {/* AIRTIME FIELDS */}
         {category === "Airtime" && (
           <>
             <div style={{marginBottom:"24px"}}>
@@ -578,8 +594,6 @@ const ServicesSell = ({ user, setPage }) => {
             </div>
           </>
         )}
-        
-        {/* DATA FIELDS */}
         {category === "Data" && (
           <>
             <div style={{marginBottom:"24px"}}>
@@ -606,13 +620,27 @@ const ServicesSell = ({ user, setPage }) => {
             </div>
           </>
         )}
-        
-        {/* SKILLS/BILLS FIELDS (keep manual input) */}
-        {(category === "Skills" || category === "Bills") && (
+        {category === "Bills" && (
+          <>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Bill Type</label>
+              <select value={billType} onChange={(e) => setBillType(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
+                <option value="NEPA">NEPA/Electricity</option>
+                <option value="DSTV">DSTV</option>
+                <option value="GOtv">GOtv</option>
+                <option value="Startimes">Startimes</option>
+              </select>
+            </div>
+            <div style={{padding:"12px",background:"#E8F5E9",borderRadius:"8px",marginBottom:"24px"}}>
+              <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>Title will be: {billType} Bill Payment</p>
+            </div>
+          </>
+        )}
+        {(category === "Skills") && (
           <>
             <div style={{marginBottom:"24px"}}>
               <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Title</label>
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={category === "Skills" ? "Logo Design" : "Electricity Bill Payment"} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Logo Design" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
             </div>
             <div style={{marginBottom:"24px"}}>
               <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Description</label>
@@ -620,14 +648,11 @@ const ServicesSell = ({ user, setPage }) => {
             </div>
           </>
         )}
-        
         <div style={{marginBottom:"24px"}}>
           <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Your Price (₦)</label>
           <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="500" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
         </div>
-        
         {error && <div style={{color:"#d32f2f",marginBottom:"20px",padding:"14px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
-        
         <button type="submit" disabled={uploading} style={{width:"100%",padding:"18px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700",cursor:uploading?"not-allowed":"pointer"}}>
           {uploading ? "Listing..." : "List Service"}
         </button>
@@ -635,7 +660,6 @@ const ServicesSell = ({ user, setPage }) => {
     </div>
   );
 };
-
 
 const ServicesMyListings = ({ user }) => {
   const [services, setServices] = useState([]);
@@ -662,7 +686,6 @@ const ServicesMyListings = ({ user }) => {
     </div>
   );
 };
-
 const TicketsBrowse = ({ user }) => {
   const [tickets, setTickets] = useState([]);
   useEffect(() => {
@@ -749,106 +772,78 @@ const TicketsMyListings = ({ user }) => {
     </div>
   );
 };
-const AddMoneyModal = ({ user, onClose }) => {
-  const [amount, setAmount] = useState("");
-  const [screenshot, setScreenshot] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
-  
-  const handleScreenshotChange = (e) => {
-    if (e.target.files[0]) setScreenshot(e.target.files[0]);
-  };
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    
-    if (!amount || !screenshot) {
-      setError("Please enter amount and upload payment proof");
-      return;
-    }
-    
-    setUploading(true);
-    
+
+const OrdersPage = ({ user }) => {
+  const [orders, setOrders] = useState([]);
+  useEffect(() => {
+    const q = query(collection(db, "orders"), where("buyerId", "==", user.uid), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [user]);
+  const confirmDelivery = async (order) => {
+    if (!window.confirm("Confirm you received this?")) return;
     try {
-      // Upload screenshot
-      const screenshotRef = ref(storage, `deposits/${user.uid}/${Date.now()}_${screenshot.name}`);
-      await uploadBytes(screenshotRef, screenshot);
-      const screenshotUrl = await getDownloadURL(screenshotRef);
-      
-      // Create deposit request
-      await addDoc(collection(db, "deposits"), {
-        userId: user.uid,
-        amount: parseFloat(amount),
-        screenshotUrl,
-        status: "pending",
-        createdAt: serverTimestamp()
+      await updateDoc(doc(db, "orders", order.id), {
+        status: "completed",
+        completedAt: serverTimestamp()
       });
-      
-      alert("Deposit request submitted! You'll be credited once approved.");
-      onClose();
+      const sellerSnap = await getDoc(doc(db, "users", order.sellerId));
+      const sellerWallet = sellerSnap.data()?.wallet || 0;
+      await updateDoc(doc(db, "users", order.sellerId), {
+        wallet: sellerWallet + order.price,
+        totalSales: (sellerSnap.data()?.totalSales || 0) + 1
+      });
+      alert("Delivery confirmed! Seller has been paid.");
+      window.location.reload();
     } catch (err) {
-      setError(err.message);
+      alert("Error: " + err.message);
     }
-    
-    setUploading(false);
   };
-  
   return (
-    <div onClick={onClose} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"20px"}}>
-      <div onClick={(e) => e.stopPropagation()} style={{background:"white",borderRadius:"16px",padding:"32px",maxWidth:"500px",width:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-        <h2 style={{fontSize:"24px",fontWeight:"800",marginBottom:"24px"}}>Add Money to Wallet</h2>
-        
-        <div style={{padding:"20px",background:"#FFF5F2",borderRadius:"12px",marginBottom:"24px"}}>
-          <p style={{fontSize:"14px",fontWeight:"700",color:"#FF6B35",marginBottom:"12px"}}>TRANSFER TO:</p>
-          <p style={{fontSize:"16px",fontWeight:"700",marginBottom:"4px"}}>Bank: OPay</p>
-          <p style={{fontSize:"16px",fontWeight:"700",marginBottom:"4px"}}>Account: 9020853814</p>
-          <p style={{fontSize:"16px",fontWeight:"700"}}>Name: Emmanuel Etim Kelvin</p>
+    <div style={{maxWidth:"800px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
+      <h2 style={{fontSize:"28px",fontWeight:"800",marginBottom:"24px"}}>My Orders</h2>
+      {orders.length === 0 ? (
+        <div style={{textAlign:"center",padding:"80px 20px",background:"white",borderRadius:"16px"}}><p>No orders yet</p></div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:"16px"}}>
+          {orders.map(order => (
+            <div key={order.id} style={{background:"white",padding:"24px",borderRadius:"16px",boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"start",marginBottom:"16px"}}>
+                <div>
+                  <h3 style={{fontSize:"18px",fontWeight:"700",marginBottom:"4px"}}>{order.title}</h3>
+                  <p style={{fontSize:"13px",color:"#999"}}>{order.createdAt?.toDate().toLocaleString()}</p>
+                </div>
+                <div style={{padding:"6px 12px",background:order.status==="completed"?"#E8F5E9":"#FFF9C4",borderRadius:"12px",fontSize:"12px",fontWeight:"700",color:order.status==="completed"?"#4CAF50":"#F57F17"}}>
+                  {order.status}
+                </div>
+              </div>
+              <p style={{fontSize:"24px",fontWeight:"800",marginBottom:"16px",color:"#FF6B35"}}>₦{order.price?.toLocaleString()}</p>
+              {order.phoneNumber && (
+                <div style={{padding:"12px",background:"#E3F2FD",borderRadius:"8px",marginBottom:"16px"}}>
+                  <p style={{fontSize:"13px",color:"#1976D2",fontWeight:"600"}}>📱 Phone: {order.phoneNumber}</p>
+                </div>
+              )}
+              {order.accountNumber && (
+                <div style={{padding:"12px",background:"#FFF3E0",borderRadius:"8px",marginBottom:"16px"}}>
+                  <p style={{fontSize:"13px",color:"#F57F17",fontWeight:"600"}}>⚡ Account: {order.accountNumber}</p>
+                </div>
+              )}
+              {order.status === "pending" && (
+                <button onClick={() => confirmDelivery(order)} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>
+                  Confirm Delivery
+                </button>
+              )}
+              {order.status === "completed" && (
+                <div style={{padding:"14px",background:"#E8F5E9",borderRadius:"8px",textAlign:"center"}}>
+                  <p style={{fontSize:"14px",fontWeight:"600",color:"#4CAF50"}}>✓ Completed</p>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-        
-        <form onSubmit={handleSubmit}>
-          <div style={{marginBottom:"20px"}}>
-            <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Amount Sent (₦)</label>
-            <input 
-              type="number" 
-              value={amount} 
-              onChange={(e) => setAmount(e.target.value)} 
-              placeholder="5000"
-              style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"15px"}}
-            />
-          </div>
-          
-          <div style={{marginBottom:"20px"}}>
-            <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Upload Payment Proof</label>
-            <input 
-              type="file" 
-              accept="image/*" 
-              onChange={handleScreenshotChange}
-              style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"15px"}}
-            />
-            {screenshot && <p style={{marginTop:"10px",fontSize:"14px",color:"#4CAF50",fontWeight:"600"}}>✓ {screenshot.name}</p>}
-          </div>
-          
-          {error && <div style={{color:"#d32f2f",marginBottom:"20px",fontSize:"14px",padding:"14px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
-          
-          <div style={{display:"flex",gap:"12px"}}>
-            <button 
-              type="button" 
-              onClick={onClose}
-              style={{flex:1,padding:"16px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"16px",fontWeight:"700",cursor:"pointer"}}
-            >
-              Cancel
-            </button>
-            <button 
-              type="submit" 
-              disabled={uploading}
-              style={{flex:1,padding:"16px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"16px",fontWeight:"700",cursor:uploading?"not-allowed":"pointer"}}
-            >
-              {uploading ? "Submitting..." : "Submit"}
-            </button>
-          </div>
-        </form>
-      </div>
+      )}
     </div>
   );
 };
@@ -856,11 +851,10 @@ const AddMoneyModal = ({ user, onClose }) => {
 const ProfilePage = ({ user }) => {
   const [userData, setUserData] = useState(null);
   useEffect(() => {
-    const load = async () => {
-      const snap = await getDoc(doc(db, "users", user.uid));
+    const unsub = onSnapshot(doc(db, "users", user.uid), (snap) => {
       if (snap.exists()) setUserData(snap.data());
-    };
-    load();
+    });
+    return () => unsub();
   }, [user]);
   return (
     <div style={{maxWidth:"600px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
@@ -876,96 +870,6 @@ const ProfilePage = ({ user }) => {
         </div>
         <button onClick={() => signOut(auth)} style={{width:"100%",padding:"16px",background:"#ffebee",color:"#d32f2f",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700",cursor:"pointer"}}>Sign Out</button>
       </div>
-    </div>
-  );
-};
-const OrdersPage = ({ user }) => {
-  const [orders, setOrders] = useState([]);
-  
-  useEffect(() => {
-    const q = query(collection(db, "orders"), where("buyerId", "==", user.uid), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, [user]);
-  
-  const confirmDelivery = async (order) => {
-    if (!window.confirm("Confirm you received this?")) return;
-    
-    try {
-      // Update order status
-      await updateDoc(doc(db, "orders", order.id), {
-        status: "completed",
-        completedAt: serverTimestamp()
-      });
-      
-      // Pay seller
-      const sellerSnap = await getDoc(doc(db, "users", order.sellerId));
-      const sellerWallet = sellerSnap.data()?.wallet || 0;
-      
-      await updateDoc(doc(db, "users", order.sellerId), {
-        wallet: sellerWallet + order.price,
-        totalSales: (sellerSnap.data()?.totalSales || 0) + 1
-      });
-      
-      alert("Delivery confirmed! Seller has been paid.");
-    } catch (err) {
-      alert("Error: " + err.message);
-    }
-  };
-  
-  return (
-    <div style={{maxWidth:"800px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
-      <h2 style={{fontSize:"28px",fontWeight:"800",marginBottom:"24px"}}>My Orders</h2>
-      
-      {orders.length === 0 ? (
-        <div style={{textAlign:"center",padding:"80px 20px",background:"white",borderRadius:"16px"}}>
-          <p style={{fontSize:"18px",color:"#666"}}>No orders yet</p>
-        </div>
-      ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:"16px"}}>
-          {orders.map(order => (
-            <div key={order.id} style={{background:"white",padding:"24px",borderRadius:"16px",boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"start",marginBottom:"16px"}}>
-                <div>
-                  <h3 style={{fontSize:"18px",fontWeight:"700",marginBottom:"4px"}}>{order.title}</h3>
-                  <p style={{fontSize:"13px",color:"#999"}}>{order.createdAt?.toDate().toLocaleString()}</p>
-                </div>
-                <div style={{padding:"6px 12px",background:order.status==="completed"?"#E8F5E9":"#FFF9C4",borderRadius:"12px",fontSize:"12px",fontWeight:"700",color:order.status==="completed"?"#4CAF50":"#F57F17"}}>
-                  {order.status}
-                </div>
-              </div>
-              
-              <p style={{fontSize:"24px",fontWeight:"800",marginBottom:"16px",color:"#FF6B35"}}>₦{order.price?.toLocaleString()}</p>
-              {order.phoneNumber && (
-  <div style={{padding:"12px",background:"#E3F2FD",borderRadius:"8px",marginBottom:"16px"}}>
-    <p style={{fontSize:"13px",color:"#1976D2",fontWeight:"600"}}>📱 Phone: {order.phoneNumber}</p>
-    {order.network && <p style={{fontSize:"13px",color:"#1976D2",fontWeight:"600"}}>📡 Network: {order.network}</p>}
-  </div>
-)}
-
-{order.meterNumber && (
-  <div style={{padding:"12px",background:"#FFF3E0",borderRadius:"8px",marginBottom:"16px"}}>
-    <p style={{fontSize:"13px",color:"#F57F17",fontWeight:"600"}}>⚡ Meter: {order.meterNumber}</p>
-  </div>
-)}
-
-              {order.status === "pending" && (
-                <button onClick={() => confirmDelivery(order)} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>
-                  Confirm Delivery
-                </button>
-              )}
-              
-              {order.status === "completed" && (
-                <div style={{padding:"14px",background:"#E8F5E9",borderRadius:"8px",textAlign:"center"}}>
-                  <p style={{fontSize:"14px",fontWeight:"600",color:"#4CAF50"}}>✓ Completed</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
@@ -995,6 +899,5 @@ const NavBar = ({ page, setPage }) => {
     </div>
   );
 };
-
 
 export default App;

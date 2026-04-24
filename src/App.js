@@ -5,7 +5,8 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
 
 const PRODUCT_CATEGORIES = ["All", "Campus", "Food", "Thrift", "Clothes", "Accessories", "Electronics", "Other"];
-const SERVICE_CATEGORIES = ["All", "Airtime", "Data", "Skills", "Bills"];
+const SERVICE_CATEGORIES = ["All", "Airtime", "Data", "Bills", "Skills", "Gift Cards", "Crypto"];
+const ADMIN_UID = "Hnl2ncOnVtPWbnVTz3TcU2jJUXy1";
 
 const handleBuyProduct = async (product, user) => {
   try {
@@ -54,6 +55,16 @@ const handleBuyService = async (service, user) => {
       if (!accountNumber) return;
       extraInfo.accountNumber = accountNumber;
     }
+    if (service.category === "Gift Cards") {
+      const cardType = prompt("Enter card type (e.g., iTunes $50):");
+      if (!cardType) return;
+      extraInfo.cardType = cardType;
+    }
+    if (service.category === "Crypto") {
+      const walletAddress = prompt("Enter your crypto wallet address:");
+      if (!walletAddress) return;
+      extraInfo.walletAddress = walletAddress;
+    }
     await updateDoc(doc(db, "users", user.uid), {
       wallet: buyerWallet - service.price
     });
@@ -70,6 +81,35 @@ const handleBuyService = async (service, user) => {
       ...extraInfo
     });
     alert("Order placed! Seller will deliver soon.");
+    window.location.reload();
+  } catch (err) {
+    alert("Error: " + err.message);
+  }
+};
+
+const handleBuyTicket = async (ticket, user) => {
+  try {
+    const buyerSnap = await getDoc(doc(db, "users", user.uid));
+    const buyerWallet = buyerSnap.data()?.wallet || 0;
+    if (buyerWallet < ticket.price) {
+      alert("Insufficient funds! Add money to your wallet.");
+      return;
+    }
+    await updateDoc(doc(db, "users", user.uid), {
+      wallet: buyerWallet - ticket.price
+    });
+    await addDoc(collection(db, "orders"), {
+      ticketId: ticket.id,
+      title: ticket.title,
+      price: ticket.price,
+      buyerId: user.uid,
+      sellerId: ticket.sellerId,
+      type: "ticket",
+      ticketType: ticket.ticketType,
+      status: "pending",
+      createdAt: serverTimestamp()
+    });
+    alert("Ticket purchased! Check your orders.");
     window.location.reload();
   } catch (err) {
     alert("Error: " + err.message);
@@ -277,7 +317,7 @@ const AddMoneyModal = ({ user, onClose }) => {
           {error && <div style={{color:"#d32f2f",marginBottom:"20px",fontSize:"14px",padding:"14px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
           <div style={{display:"flex",gap:"12px"}}>
             <button type="button" onClick={onClose} style={{flex:1,padding:"16px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"16px",fontWeight:"700",cursor:"pointer"}}>Cancel</button>
-            <button type="submit" disabled={uploading} style={{flex:1,padding:"16px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"16px",fontWeight:"700",cursor:uploading?"not-allowed":"pointer"}}>
+            <button type="submit" disabled={uploading} style={{flex:1,padding:"16px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700",cursor:uploading?"not-allowed":"pointer"}}>
               {uploading ? "Submitting..." : "Submit"}
             </button>
           </div>
@@ -504,6 +544,7 @@ const ServicesBrowse = ({ user }) => {
               <div style={{padding:"20px"}}>
                 <div style={{display:"inline-block",padding:"5px 12px",background:"#E8F5E9",borderRadius:"12px",fontSize:"11px",fontWeight:"700",color:"#4CAF50",marginBottom:"10px"}}>{service.category}</div>
                 <h3 style={{fontSize:"17px",fontWeight:"700",marginBottom:"10px"}}>{service.title}</h3>
+                <p style={{color:"#666",fontSize:"13px",marginBottom:"10px",lineHeight:"1.5"}}>{service.description?.substring(0,80)}...</p>
                 <p style={{fontSize:"24px",fontWeight:"800",color:"#4CAF50"}}>₦{service.price?.toLocaleString()}</p>
                 {service.sellerId === user.uid && (
                   <div style={{marginTop:"12px",padding:"8px",background:"#FFF9C4",borderRadius:"8px",textAlign:"center"}}>
@@ -518,9 +559,13 @@ const ServicesBrowse = ({ user }) => {
     </div>
   );
 };
-
 const ServicesSell = ({ user, setPage }) => {
-  const [category, setCategory] = useState("Airtime");
+  const isAdmin = user.uid === ADMIN_UID;
+  const availableCategories = isAdmin 
+    ? SERVICE_CATEGORIES.filter(c => c !== "All")
+    : SERVICE_CATEGORIES.filter(c => c !== "All" && c !== "Airtime" && c !== "Data" && c !== "Bills");
+  
+  const [category, setCategory] = useState(availableCategories[0]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
@@ -531,11 +576,15 @@ const ServicesSell = ({ user, setPage }) => {
   const [dataNetwork, setDataNetwork] = useState("MTN");
   const [dataPlan, setDataPlan] = useState("1GB - ₦500");
   const [billType, setBillType] = useState("NEPA");
+  const [cryptoType, setCryptoType] = useState("Bitcoin");
+  const [cryptoWallet, setCryptoWallet] = useState("");
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     let finalTitle = title;
     let finalDescription = description;
+    
     if (category === "Airtime") {
       finalTitle = `${network} ₦${airtimeAmount} Airtime`;
       if (!description.trim()) finalDescription = `${network} airtime recharge of ₦${airtimeAmount}`;
@@ -548,15 +597,34 @@ const ServicesSell = ({ user, setPage }) => {
       finalTitle = `${billType} Bill Payment`;
       if (!description.trim()) finalDescription = `Pay your ${billType} bill instantly`;
     }
+    if (category === "Crypto" && !cryptoWallet.trim()) {
+      setError("Please enter your crypto wallet address");
+      return;
+    }
+    
     if (!finalTitle.trim() || !finalDescription.trim() || !price) { setError("Fill all fields"); return; }
     setUploading(true);
     try {
-      await addDoc(collection(db, "services"), { title: finalTitle.trim(), description: finalDescription.trim(), price: parseFloat(price), category, sellerId: user.uid, createdAt: serverTimestamp(), status: "active" });
+      const serviceData = { 
+        title: finalTitle.trim(), 
+        description: finalDescription.trim(), 
+        price: parseFloat(price), 
+        category, 
+        sellerId: user.uid, 
+        createdAt: serverTimestamp(), 
+        status: "active"
+      };
+      if (category === "Crypto") {
+        serviceData.cryptoType = cryptoType;
+        serviceData.cryptoWallet = cryptoWallet.trim();
+      }
+      await addDoc(collection(db, "services"), serviceData);
       alert("Service listed!");
       setPage("mylistings");
     } catch (err) { setError(err.message); }
     setUploading(false);
   };
+  
   return (
     <div style={{maxWidth:"600px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
       <h2 style={{fontSize:"28px",fontWeight:"800",marginBottom:"24px"}}>Offer Service</h2>
@@ -564,79 +632,101 @@ const ServicesSell = ({ user, setPage }) => {
         <div style={{marginBottom:"24px"}}>
           <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Service Type</label>
           <select value={category} onChange={(e) => setCategory(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
-            {SERVICE_CATEGORIES.filter(c => c !== "All").map(cat => <option key={cat} value={cat}>{cat}</option>)}
+            {availableCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </div>
+        
         {category === "Airtime" && (
           <>
             <div style={{marginBottom:"24px"}}>
               <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Network</label>
               <select value={network} onChange={(e) => setNetwork(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
-                <option value="MTN">MTN</option>
-                <option value="Airtel">Airtel</option>
-                <option value="Glo">Glo</option>
-                <option value="9mobile">9mobile</option>
+                {["MTN","Airtel","Glo","9mobile"].map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
             <div style={{marginBottom:"24px"}}>
               <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Amount</label>
               <select value={airtimeAmount} onChange={(e) => setAirtimeAmount(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
-                <option value="100">₦100</option>
-                <option value="200">₦200</option>
-                <option value="500">₦500</option>
-                <option value="1000">₦1,000</option>
-                <option value="2000">₦2,000</option>
-                <option value="5000">₦5,000</option>
+                {["100","200","500","1000","2000","5000"].map(a => <option key={a} value={a}>₦{a}</option>)}
               </select>
             </div>
             <div style={{padding:"12px",background:"#E8F5E9",borderRadius:"8px",marginBottom:"24px"}}>
-              <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>Title will be: {network} ₦{airtimeAmount} Airtime</p>
+              <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>Title: {network} ₦{airtimeAmount} Airtime</p>
             </div>
           </>
         )}
+        
         {category === "Data" && (
           <>
             <div style={{marginBottom:"24px"}}>
               <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Network</label>
               <select value={dataNetwork} onChange={(e) => setDataNetwork(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
-                <option value="MTN">MTN</option>
-                <option value="Airtel">Airtel</option>
-                <option value="Glo">Glo</option>
-                <option value="9mobile">9mobile</option>
+                {["MTN","Airtel","Glo","9mobile"].map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
             <div style={{marginBottom:"24px"}}>
               <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Data Plan</label>
               <select value={dataPlan} onChange={(e) => setDataPlan(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
-                <option value="500MB - ₦500">500MB - ₦500</option>
-                <option value="1GB - ₦800">1GB - ₦800</option>
-                <option value="2GB - ₦1500">2GB - ₦1,500</option>
-                <option value="5GB - ₦3000">5GB - ₦3,000</option>
-                <option value="10GB - ₦5000">10GB - ₦5,000</option>
+                {["500MB - ₦500","1GB - ₦800","2GB - ₦1500","5GB - ₦3000","10GB - ₦5000"].map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div style={{padding:"12px",background:"#E8F5E9",borderRadius:"8px",marginBottom:"24px"}}>
-              <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>Title will be: {dataNetwork} {dataPlan.split(' - ')[0]} Data</p>
+              <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>Title: {dataNetwork} {dataPlan.split(' - ')[0]} Data</p>
             </div>
           </>
         )}
+        
         {category === "Bills" && (
           <>
             <div style={{marginBottom:"24px"}}>
               <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Bill Type</label>
               <select value={billType} onChange={(e) => setBillType(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
-                <option value="NEPA">NEPA/Electricity</option>
-                <option value="DSTV">DSTV</option>
-                <option value="GOtv">GOtv</option>
-                <option value="Startimes">Startimes</option>
+                {["NEPA","DSTV","GOtv","Startimes"].map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
             <div style={{padding:"12px",background:"#E8F5E9",borderRadius:"8px",marginBottom:"24px"}}>
-              <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>Title will be: {billType} Bill Payment</p>
+              <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>Title: {billType} Bill Payment</p>
             </div>
           </>
         )}
-        {(category === "Skills") && (
+        
+        {category === "Gift Cards" && (
+          <>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Card Details</label>
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="iTunes $50 Gift Card" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+            </div>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Description</label>
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Selling unused iTunes gift card..." rows="3" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",resize:"vertical"}} />
+            </div>
+          </>
+        )}
+        
+        {category === "Crypto" && (
+          <>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Crypto Type</label>
+              <select value={cryptoType} onChange={(e) => setCryptoType(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
+                {["Bitcoin","Ethereum","USDT","BNB"].map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Amount Details</label>
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="0.005 BTC" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+            </div>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Your Wallet Address</label>
+              <input type="text" value={cryptoWallet} onChange={(e) => setCryptoWallet(e.target.value)} placeholder="bc1q..." style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+            </div>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Description</label>
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Selling crypto at market rate..." rows="3" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",resize:"vertical"}} />
+            </div>
+          </>
+        )}
+        
+        {category === "Skills" && (
           <>
             <div style={{marginBottom:"24px"}}>
               <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Title</label>
@@ -644,15 +734,18 @@ const ServicesSell = ({ user, setPage }) => {
             </div>
             <div style={{marginBottom:"24px"}}>
               <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Description</label>
-              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your service..." rows="5" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",resize:"vertical"}} />
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Professional logo design..." rows="5" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",resize:"vertical"}} />
             </div>
           </>
         )}
+        
         <div style={{marginBottom:"24px"}}>
           <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Your Price (₦)</label>
-          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="500" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="5000" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
         </div>
+        
         {error && <div style={{color:"#d32f2f",marginBottom:"20px",padding:"14px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
+        
         <button type="submit" disabled={uploading} style={{width:"100%",padding:"18px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700",cursor:uploading?"not-allowed":"pointer"}}>
           {uploading ? "Listing..." : "List Service"}
         </button>
@@ -668,17 +761,18 @@ const ServicesMyListings = ({ user }) => {
     const unsub = onSnapshot(q, (snap) => { setServices(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
     return () => unsub();
   }, [user]);
-  const deleteService = async (id) => { if (window.confirm("Delete?")) await deleteDoc(doc(db, "services", id)); };
+  const deleteService = async (id) => { if (window.confirm("Delete this service?")) await deleteDoc(doc(db, "services", id)); };
   return (
     <div style={{maxWidth:"1200px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
       <h2>My Services</h2>
       {services.length === 0 ? <div style={{textAlign:"center",padding:"80px",background:"white",borderRadius:"16px"}}><p>No services yet</p></div> : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))",gap:"20px"}}>
           {services.map(s => (
-            <div key={s.id} style={{background:"white",borderRadius:"12px",padding:"20px"}}>
-              <h3>{s.title}</h3>
-              <p style={{fontSize:"24px",fontWeight:"800",color:"#4CAF50"}}>₦{s.price?.toLocaleString()}</p>
-              <button onClick={() => deleteService(s.id)} style={{width:"100%",marginTop:"16px",padding:"12px",background:"#ffebee",color:"#d32f2f",border:"none",borderRadius:"8px",cursor:"pointer"}}>Delete</button>
+            <div key={s.id} style={{background:"white",borderRadius:"12px",padding:"20px",boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
+              <div style={{display:"inline-block",padding:"5px 12px",background:"#E8F5E9",borderRadius:"12px",fontSize:"11px",fontWeight:"700",color:"#4CAF50",marginBottom:"10px"}}>{s.category}</div>
+              <h3 style={{fontSize:"17px",fontWeight:"700",marginBottom:"8px"}}>{s.title}</h3>
+              <p style={{fontSize:"24px",fontWeight:"800",color:"#4CAF50",marginBottom:"16px"}}>₦{s.price?.toLocaleString()}</p>
+              <button onClick={() => deleteService(s.id)} style={{width:"100%",marginTop:"8px",padding:"12px",background:"#ffebee",color:"#d32f2f",border:"none",borderRadius:"8px",cursor:"pointer",fontWeight:"700"}}>Delete</button>
             </div>
           ))}
         </div>
@@ -688,22 +782,44 @@ const ServicesMyListings = ({ user }) => {
 };
 const TicketsBrowse = ({ user }) => {
   const [tickets, setTickets] = useState([]);
+  const [ticketType, setTicketType] = useState("All");
   useEffect(() => {
     const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(q, (snap) => { setTickets(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
     return () => unsub();
   }, []);
+  const filtered = tickets.filter(t => ticketType === "All" || t.ticketType === ticketType);
   return (
     <div style={{maxWidth:"1200px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
-      {tickets.length === 0 ? <div style={{textAlign:"center",padding:"80px",background:"white",borderRadius:"16px"}}><p>No tickets</p></div> : (
+      <div style={{display:"flex",gap:"10px",marginBottom:"24px",overflowX:"auto"}}>
+        {["All","Event","Flight"].map(type => (
+          <button key={type} onClick={() => setTicketType(type)} style={{padding:"10px 20px",background:ticketType===type?"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)":"white",color:ticketType===type?"white":"#666",border:"none",borderRadius:"24px",fontSize:"14px",fontWeight:"600",cursor:"pointer",whiteSpace:"nowrap"}}>{type}</button>
+        ))}
+      </div>
+      {filtered.length === 0 ? <div style={{textAlign:"center",padding:"80px",background:"white",borderRadius:"16px"}}><p>No tickets</p></div> : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))",gap:"24px"}}>
-          {tickets.map(t => (
-            <div key={t.id} style={{background:"white",borderRadius:"16px",overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
+          {filtered.map(t => (
+            <div key={t.id} onClick={() => {
+              if (t.sellerId === user.uid) {
+                alert("This is your own ticket!");
+              } else {
+                if (window.confirm(`Buy ${t.title} for ₦${t.price?.toLocaleString()}?`)) {
+                  handleBuyTicket(t, user);
+                }
+              }
+            }} style={{background:"white",borderRadius:"16px",overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,0.08)",cursor:"pointer"}}>
               {t.imageUrl && <img src={t.imageUrl} alt={t.title} style={{width:"100%",height:"200px",objectFit:"cover"}} />}
               <div style={{padding:"24px"}}>
-                <h3>{t.title}</h3>
-                <p>📅 {t.eventDate}</p>
+                <div style={{display:"inline-block",padding:"5px 12px",background:"#F3E5F5",borderRadius:"12px",fontSize:"11px",fontWeight:"700",color:"#9C27B0",marginBottom:"10px"}}>{t.ticketType}</div>
+                <h3 style={{fontSize:"18px",fontWeight:"700",marginBottom:"8px"}}>{t.title}</h3>
+                {t.eventDate && <p style={{fontSize:"13px",color:"#666",marginBottom:"8px"}}>📅 {t.eventDate}</p>}
+                {t.venue && <p style={{fontSize:"13px",color:"#666",marginBottom:"12px"}}>📍 {t.venue}</p>}
                 <p style={{fontSize:"28px",fontWeight:"800",color:"#9C27B0"}}>₦{t.price?.toLocaleString()}</p>
+                {t.sellerId === user.uid && (
+                  <div style={{marginTop:"12px",padding:"8px",background:"#FFF9C4",borderRadius:"8px",textAlign:"center"}}>
+                    <p style={{fontSize:"12px",fontWeight:"700",color:"#F57F17"}}>Your Ticket</p>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -714,6 +830,7 @@ const TicketsBrowse = ({ user }) => {
 };
 
 const TicketsSell = ({ user, setPage }) => {
+  const [ticketType, setTicketType] = useState("Event");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
@@ -722,10 +839,21 @@ const TicketsSell = ({ user, setPage }) => {
   const [uploading, setUploading] = useState(false);
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim() || !price || !eventDate.trim()) { alert("Fill required fields"); return; }
+    if (!title.trim() || !description.trim() || !price) { alert("Fill required fields"); return; }
     setUploading(true);
     try {
-      await addDoc(collection(db, "tickets"), { title: title.trim(), description: description.trim(), price: parseFloat(price), eventDate: eventDate.trim(), venue: venue.trim() || null, imageUrl: "", sellerId: user.uid, createdAt: serverTimestamp(), status: "active" });
+      await addDoc(collection(db, "tickets"), { 
+        title: title.trim(), 
+        description: description.trim(), 
+        price: parseFloat(price), 
+        ticketType,
+        eventDate: eventDate.trim() || null, 
+        venue: venue.trim() || null, 
+        imageUrl: "", 
+        sellerId: user.uid, 
+        createdAt: serverTimestamp(), 
+        status: "active" 
+      });
       alert("Ticket listed!");
       setPage("mylistings");
     } catch (err) { alert(err.message); }
@@ -735,12 +863,19 @@ const TicketsSell = ({ user, setPage }) => {
     <div style={{maxWidth:"600px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
       <h2>Sell Tickets</h2>
       <form onSubmit={handleSubmit} style={{background:"white",padding:"32px",borderRadius:"16px"}}>
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Event Name" style={{width:"100%",padding:"14px",marginBottom:"16px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
-        <input type="text" value={eventDate} onChange={(e) => setEventDate(e.target.value)} placeholder="Date" style={{width:"100%",padding:"14px",marginBottom:"16px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
-        <input type="text" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Venue" style={{width:"100%",padding:"14px",marginBottom:"16px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+        <div style={{marginBottom:"24px"}}>
+          <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Ticket Type</label>
+          <select value={ticketType} onChange={(e) => setTicketType(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
+            <option value="Event">Event</option>
+            <option value="Flight">Flight</option>
+          </select>
+        </div>
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={ticketType === "Event" ? "Concert Name" : "Lagos to Abuja"} style={{width:"100%",padding:"14px",marginBottom:"16px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+        <input type="text" value={eventDate} onChange={(e) => setEventDate(e.target.value)} placeholder={ticketType === "Event" ? "Event Date" : "Flight Date"} style={{width:"100%",padding:"14px",marginBottom:"16px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+        <input type="text" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder={ticketType === "Event" ? "Venue" : "Flight Details"} style={{width:"100%",padding:"14px",marginBottom:"16px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
         <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price" style={{width:"100%",padding:"14px",marginBottom:"16px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" rows="5" style={{width:"100%",padding:"14px",marginBottom:"16px",border:"2px solid #f0f0f0",borderRadius:"8px",resize:"vertical"}} />
-        <button type="submit" disabled={uploading} style={{width:"100%",padding:"18px",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700"}}>{uploading ? "Listing..." : "List"}</button>
+        <button type="submit" disabled={uploading} style={{width:"100%",padding:"18px",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700"}}>{uploading ? "Listing..." : "List Ticket"}</button>
       </form>
     </div>
   );
@@ -760,11 +895,12 @@ const TicketsMyListings = ({ user }) => {
       {tickets.length === 0 ? <div style={{textAlign:"center",padding:"80px",background:"white",borderRadius:"16px"}}><p>No tickets</p></div> : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(320px, 1fr))",gap:"24px"}}>
           {tickets.map(t => (
-            <div key={t.id} style={{background:"white",borderRadius:"16px",padding:"24px"}}>
-              <h3>{t.title}</h3>
-              <p>📅 {t.eventDate}</p>
-              <p style={{fontSize:"24px",fontWeight:"800",color:"#9C27B0"}}>₦{t.price?.toLocaleString()}</p>
-              <button onClick={() => deleteTicket(t.id)} style={{width:"100%",marginTop:"16px",padding:"12px",background:"#ffebee",color:"#d32f2f",border:"none",borderRadius:"8px",cursor:"pointer"}}>Delete</button>
+            <div key={t.id} style={{background:"white",borderRadius:"16px",padding:"24px",boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
+              <div style={{display:"inline-block",padding:"5px 12px",background:"#F3E5F5",borderRadius:"12px",fontSize:"11px",fontWeight:"700",color:"#9C27B0",marginBottom:"10px"}}>{t.ticketType}</div>
+              <h3 style={{fontSize:"18px",fontWeight:"700",marginBottom:"8px"}}>{t.title}</h3>
+              {t.eventDate && <p style={{fontSize:"13px",color:"#666"}}>📅 {t.eventDate}</p>}
+              <p style={{fontSize:"24px",fontWeight:"800",color:"#9C27B0",marginTop:"12px",marginBottom:"16px"}}>₦{t.price?.toLocaleString()}</p>
+              <button onClick={() => deleteTicket(t.id)} style={{width:"100%",padding:"12px",background:"#ffebee",color:"#d32f2f",border:"none",borderRadius:"8px",cursor:"pointer",fontWeight:"700"}}>Delete</button>
             </div>
           ))}
         </div>
@@ -777,18 +913,13 @@ const OrdersPage = ({ user }) => {
   const [orders, setOrders] = useState([]);
   useEffect(() => {
     const q = query(collection(db, "orders"), where("buyerId", "==", user.uid), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const unsub = onSnapshot(q, (snap) => { setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
     return () => unsub();
   }, [user]);
   const confirmDelivery = async (order) => {
     if (!window.confirm("Confirm you received this?")) return;
     try {
-      await updateDoc(doc(db, "orders", order.id), {
-        status: "completed",
-        completedAt: serverTimestamp()
-      });
+      await updateDoc(doc(db, "orders", order.id), { status: "completed", completedAt: serverTimestamp() });
       const sellerSnap = await getDoc(doc(db, "users", order.sellerId));
       const sellerWallet = sellerSnap.data()?.wallet || 0;
       await updateDoc(doc(db, "users", order.sellerId), {
@@ -797,9 +928,7 @@ const OrdersPage = ({ user }) => {
       });
       alert("Delivery confirmed! Seller has been paid.");
       window.location.reload();
-    } catch (err) {
-      alert("Error: " + err.message);
-    }
+    } catch (err) { alert("Error: " + err.message); }
   };
   return (
     <div style={{maxWidth:"800px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
@@ -815,9 +944,7 @@ const OrdersPage = ({ user }) => {
                   <h3 style={{fontSize:"18px",fontWeight:"700",marginBottom:"4px"}}>{order.title}</h3>
                   <p style={{fontSize:"13px",color:"#999"}}>{order.createdAt?.toDate().toLocaleString()}</p>
                 </div>
-                <div style={{padding:"6px 12px",background:order.status==="completed"?"#E8F5E9":"#FFF9C4",borderRadius:"12px",fontSize:"12px",fontWeight:"700",color:order.status==="completed"?"#4CAF50":"#F57F17"}}>
-                  {order.status}
-                </div>
+                <div style={{padding:"6px 12px",background:order.status==="completed"?"#E8F5E9":"#FFF9C4",borderRadius:"12px",fontSize:"12px",fontWeight:"700",color:order.status==="completed"?"#4CAF50":"#F57F17"}}>{order.status}</div>
               </div>
               <p style={{fontSize:"24px",fontWeight:"800",marginBottom:"16px",color:"#FF6B35"}}>₦{order.price?.toLocaleString()}</p>
               {order.phoneNumber && (
@@ -830,10 +957,18 @@ const OrdersPage = ({ user }) => {
                   <p style={{fontSize:"13px",color:"#F57F17",fontWeight:"600"}}>⚡ Account: {order.accountNumber}</p>
                 </div>
               )}
+              {order.cardType && (
+                <div style={{padding:"12px",background:"#E8F5E9",borderRadius:"8px",marginBottom:"16px"}}>
+                  <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>🎁 Card: {order.cardType}</p>
+                </div>
+              )}
+              {order.walletAddress && (
+                <div style={{padding:"12px",background:"#FFF9C4",borderRadius:"8px",marginBottom:"16px"}}>
+                  <p style={{fontSize:"13px",color:"#F57F17",fontWeight:"600"}}>💰 Wallet: {order.walletAddress}</p>
+                </div>
+              )}
               {order.status === "pending" && (
-                <button onClick={() => confirmDelivery(order)} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>
-                  Confirm Delivery
-                </button>
+                <button onClick={() => confirmDelivery(order)} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>Confirm Delivery</button>
               )}
               {order.status === "completed" && (
                 <div style={{padding:"14px",background:"#E8F5E9",borderRadius:"8px",textAlign:"center"}}>

@@ -385,37 +385,148 @@ const ServicesSell = ({ user, setPage }) => {
   const [price, setPrice] = useState("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  
+  // For Airtime
+  const [network, setNetwork] = useState("MTN");
+  const [airtimeAmount, setAirtimeAmount] = useState("100");
+  
+  // For Data
+  const [dataNetwork, setDataNetwork] = useState("MTN");
+  const [dataPlan, setDataPlan] = useState("1GB - ₦500");
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!title.trim() || !description.trim() || !price) { setError("Fill all fields"); return; }
+    
+    let finalTitle = title;
+    let finalDescription = description;
+    
+    // Auto-generate for Airtime
+    if (category === "Airtime") {
+      finalTitle = `${network} ₦${airtimeAmount} Airtime`;
+      if (!description.trim()) finalDescription = `${network} airtime recharge of ₦${airtimeAmount}`;
+    }
+    
+    // Auto-generate for Data
+    if (category === "Data") {
+      finalTitle = `${dataNetwork} ${dataPlan.split(' - ')[0]} Data`;
+      if (!description.trim()) finalDescription = `${dataNetwork} data bundle - ${dataPlan}`;
+    }
+    
+    if (!finalTitle.trim() || !finalDescription.trim() || !price) { 
+      setError("Fill all fields"); 
+      return; 
+    }
+    
     setUploading(true);
     try {
-      await addDoc(collection(db, "services"), { title: title.trim(), description: description.trim(), price: parseFloat(price), category, sellerId: user.uid, createdAt: serverTimestamp(), status: "active" });
+      await addDoc(collection(db, "services"), { 
+        title: finalTitle.trim(), 
+        description: finalDescription.trim(), 
+        price: parseFloat(price), 
+        category, 
+        sellerId: user.uid, 
+        createdAt: serverTimestamp(), 
+        status: "active" 
+      });
       alert("Service listed!");
       setPage("mylistings");
-    } catch (err) { setError(err.message); }
+    } catch (err) { 
+      setError(err.message); 
+    }
     setUploading(false);
   };
+  
   return (
     <div style={{maxWidth:"600px",margin:"0 auto",padding:"20px",paddingBottom:"80px"}}>
       <h2 style={{fontSize:"28px",fontWeight:"800",marginBottom:"24px"}}>Offer Service</h2>
-      <form onSubmit={handleSubmit} style={{background:"white",padding:"32px",borderRadius:"16px"}}>
+      <form onSubmit={handleSubmit} style={{background:"white",padding:"32px",borderRadius:"16px",boxShadow:"0 4px 20px rgba(0,0,0,0.08)"}}>
+        
         <div style={{marginBottom:"24px"}}>
+          <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Service Type</label>
           <select value={category} onChange={(e) => setCategory(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
             {SERVICE_CATEGORIES.filter(c => c !== "All").map(cat => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </div>
+        
+        {/* AIRTIME FIELDS */}
+        {category === "Airtime" && (
+          <>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Network</label>
+              <select value={network} onChange={(e) => setNetwork(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
+                <option value="MTN">MTN</option>
+                <option value="Airtel">Airtel</option>
+                <option value="Glo">Glo</option>
+                <option value="9mobile">9mobile</option>
+              </select>
+            </div>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Amount</label>
+              <select value={airtimeAmount} onChange={(e) => setAirtimeAmount(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
+                <option value="100">₦100</option>
+                <option value="200">₦200</option>
+                <option value="500">₦500</option>
+                <option value="1000">₦1,000</option>
+                <option value="2000">₦2,000</option>
+                <option value="5000">₦5,000</option>
+              </select>
+            </div>
+            <div style={{padding:"12px",background:"#E8F5E9",borderRadius:"8px",marginBottom:"24px"}}>
+              <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>Title will be: {network} ₦{airtimeAmount} Airtime</p>
+            </div>
+          </>
+        )}
+        
+        {/* DATA FIELDS */}
+        {category === "Data" && (
+          <>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Network</label>
+              <select value={dataNetwork} onChange={(e) => setDataNetwork(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
+                <option value="MTN">MTN</option>
+                <option value="Airtel">Airtel</option>
+                <option value="Glo">Glo</option>
+                <option value="9mobile">9mobile</option>
+              </select>
+            </div>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Data Plan</label>
+              <select value={dataPlan} onChange={(e) => setDataPlan(e.target.value)} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}}>
+                <option value="500MB - ₦500">500MB - ₦500</option>
+                <option value="1GB - ₦800">1GB - ₦800</option>
+                <option value="2GB - ₦1500">2GB - ₦1,500</option>
+                <option value="5GB - ₦3000">5GB - ₦3,000</option>
+                <option value="10GB - ₦5000">10GB - ₦5,000</option>
+              </select>
+            </div>
+            <div style={{padding:"12px",background:"#E8F5E9",borderRadius:"8px",marginBottom:"24px"}}>
+              <p style={{fontSize:"13px",color:"#4CAF50",fontWeight:"600"}}>Title will be: {dataNetwork} {dataPlan.split(' - ')[0]} Data</p>
+            </div>
+          </>
+        )}
+        
+        {/* SKILLS/BILLS FIELDS (keep manual input) */}
+        {(category === "Skills" || category === "Bills") && (
+          <>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Title</label>
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={category === "Skills" ? "Logo Design" : "Electricity Bill Payment"} style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+            </div>
+            <div style={{marginBottom:"24px"}}>
+              <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Description</label>
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your service..." rows="5" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",resize:"vertical"}} />
+            </div>
+          </>
+        )}
+        
         <div style={{marginBottom:"24px"}}>
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
+          <label style={{display:"block",fontSize:"14px",fontWeight:"700",marginBottom:"8px"}}>Your Price (₦)</label>
+          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="500" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
         </div>
-        <div style={{marginBottom:"24px"}}>
-          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px"}} />
-        </div>
-        <div style={{marginBottom:"24px"}}>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description..." rows="5" style={{width:"100%",padding:"14px",border:"2px solid #f0f0f0",borderRadius:"8px",resize:"vertical"}} />
-        </div>
+        
         {error && <div style={{color:"#d32f2f",marginBottom:"20px",padding:"14px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
+        
         <button type="submit" disabled={uploading} style={{width:"100%",padding:"18px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"12px",fontSize:"16px",fontWeight:"700",cursor:uploading?"not-allowed":"pointer"}}>
           {uploading ? "Listing..." : "List Service"}
         </button>
@@ -423,6 +534,7 @@ const ServicesSell = ({ user, setPage }) => {
     </div>
   );
 };
+
 
 const ServicesMyListings = ({ user }) => {
   const [services, setServices] = useState([]);

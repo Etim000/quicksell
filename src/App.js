@@ -301,15 +301,26 @@ const AddMoneyModal = ({ user, onClose }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!amount || !screenshot) {
-      setError("Please enter amount and upload payment proof");
+    if (!amount) {
+      setError("Please enter amount");
       return;
     }
     setUploading(true);
     try {
-      const screenshotRef = ref(storage, `deposits/${user.uid}/${Date.now()}_${screenshot.name}`);
-      await uploadBytes(screenshotRef, screenshot);
-      const screenshotUrl = await getDownloadURL(screenshotRef);
+      let screenshotUrl = "no-screenshot-uploaded";
+      if (screenshot) {
+        try {
+          const screenshotRef = ref(storage, `deposits/${user.uid}/${Date.now()}_${screenshot.name}`);
+          await uploadBytes(screenshotRef, screenshot);
+          screenshotUrl = await getDownloadURL(screenshotRef);
+          console.log("✅ Screenshot uploaded successfully!");
+        } catch (err) {
+          console.log("⚠️ Screenshot upload failed, continuing anyway:", err);
+          screenshotUrl = "screenshot-upload-failed";
+        }
+      }
+      
+      console.log("Creating deposit document...");
       await addDoc(collection(db, "deposits"), {
         userId: user.uid,
         amount: parseFloat(amount),
@@ -317,9 +328,12 @@ const AddMoneyModal = ({ user, onClose }) => {
         status: "pending",
         createdAt: serverTimestamp()
       });
+      console.log("✅ Deposit document created!");
+      
       alert("✅ Deposit request submitted! You'll be credited once approved.");
       onClose();
     } catch (err) {
+      console.error("❌ Error:", err);
       setError(err.message);
     }
     setUploading(false);
@@ -349,7 +363,7 @@ const AddMoneyModal = ({ user, onClose }) => {
             <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5000" style={{width:"100%",padding:"16px 20px",border:"3px solid #f0f0f0",borderRadius:"12px",fontSize:"16px",fontWeight:"600",outline:"none",transition:"all 0.3s"}} onFocus={(e) => e.target.style.borderColor = "#FF6B35"} onBlur={(e) => e.target.style.borderColor = "#f0f0f0"} />
           </div>
           <div style={{marginBottom:"24px"}}>
-            <label style={{display:"block",fontSize:"15px",fontWeight:"800",marginBottom:"10px",color:"#2C3E50"}}>Upload Payment Proof</label>
+            <label style={{display:"block",fontSize:"15px",fontWeight:"800",marginBottom:"10px",color:"#2C3E50"}}>Upload Payment Proof (Optional for testing)</label>
             <input type="file" accept="image/*" onChange={handleScreenshotChange} style={{width:"100%",padding:"16px 20px",border:"3px solid #f0f0f0",borderRadius:"12px",fontSize:"15px",fontWeight:"600",cursor:"pointer"}} />
             {screenshot && <p style={{marginTop:"12px",fontSize:"15px",color:"#4CAF50",fontWeight:"700"}}>✓ {screenshot.name}</p>}
           </div>
@@ -365,6 +379,7 @@ const AddMoneyModal = ({ user, onClose }) => {
     </div>
   );
 };
+
 const ProductsBrowse = ({ user }) => {
   const [products, setProducts] = useState([]);
   const [category, setCategory] = useState("All");

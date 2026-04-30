@@ -1300,27 +1300,20 @@ const OrdersPage = ({ user, isAdmin }) => {
     const myQ = query(collection(db, "orders"), where("buyerId", "==", user.uid), orderBy("createdAt", "desc"));
     const myUnsub = onSnapshot(myQ, (snap) => { setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
     if (isAdmin) {
-  const customerQ = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-  const customerUnsub = onSnapshot(customerQ, (snap) => { 
-    const allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // Show orders where YOU are the seller OR buyer is NOT you (to exclude your own purchases)
-    const customerOrdersList = allOrders.filter(order => {
-      // Don't show orders where YOU are the buyer
-      if (order.buyerId === user.uid) return false;
-      // Show all other orders (these are customer orders)
-      return true;
-    });
-    setCustomerOrders(customerOrdersList);
-  });
-  return () => { myUnsub(); customerUnsub(); };
-}
-
-  
+      const customerQ = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+      const customerUnsub = onSnapshot(customerQ, (snap) => { 
+        const allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Show orders where YOU are NOT the buyer (these are customer orders)
+        const customerOrdersList = allOrders.filter(order => order.buyerId !== user.uid);
+        setCustomerOrders(customerOrdersList);
+      });
+      return () => { myUnsub(); customerUnsub(); };
+    }
     return () => myUnsub();
   }, [user, isAdmin]);
   
   const confirmDelivery = async (order) => {
-    if (!window.confirm("Confirm received?")) return;
+    if (!window.confirm("Confirm you received this service?")) return;
     try {
       await updateDoc(doc(db, "orders", order.id), { status: "completed", completedAt: serverTimestamp() });
       const sellerId = order.sellerId || ADMIN_UID;
@@ -1335,11 +1328,43 @@ const OrdersPage = ({ user, isAdmin }) => {
     } catch (err) { alert("Error: " + err.message); }
   };
   
-  const deleteOrder = async (orderId) => {
-    if (!window.confirm("Delete this order? This cannot be undone!")) return;
+  const approveOrder = async (order) => {
+    if (!window.confirm(`✅ Confirm you delivered this service?\n\n${order.title}\n${order.phoneNumber || ''}\n\nYou will receive ₦${order.price?.toLocaleString()}`)) return;
     try {
-      await deleteDoc(doc(db, "orders", orderId));
-      alert("✅ Order deleted!");
+      await updateDoc(doc(db, "orders", order.id), { 
+        status: "completed", 
+        completedAt: serverTimestamp(),
+        approvedBy: "admin"
+      });
+      
+      // Add money to YOUR wallet
+      const adminSnap = await getDoc(doc(db, "users", ADMIN_UID));
+      const adminWallet = adminSnap.data()?.wallet || 0;
+      await updateDoc(doc(db, "users", ADMIN_UID), {
+        wallet: adminWallet + order.price,
+        totalSales: (adminSnap.data()?.totalSales || 0) + 1
+      });
+      
+      alert("✅ Order approved! Money added to your wallet!");
+      window.location.reload();
+    } catch (err) { alert("Error: " + err.message); }
+  };
+  
+  const cancelAndRefund = async (order) => {
+    if (!window.confirm(`⚠️ CANCEL & REFUND this order?\n\n${order.title}\nCustomer will get ₦${order.price?.toLocaleString()} back\n\nThis cannot be undone!`)) return;
+    try {
+      // Refund customer
+      const customerSnap = await getDoc(doc(db, "users", order.buyerId));
+      const customerWallet = customerSnap.data()?.wallet || 0;
+      await updateDoc(doc(db, "users", order.buyerId), {
+        wallet: customerWallet + order.price
+      });
+      
+      // Delete order
+      await deleteDoc(doc(db, "orders", order.id));
+      
+      alert("✅ Order cancelled and customer refunded!");
+      window.location.reload();
     } catch (err) { alert("Error: " + err.message); }
   };
   
@@ -1377,6 +1402,7 @@ const OrdersPage = ({ user, isAdmin }) => {
                 </div>
               </div>
               <p style={{fontSize:"20px",fontWeight:"900",marginBottom:"10px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{order.price?.toLocaleString()}</p>
+              
               {order.phoneNumber && (
                 <div style={{padding:"10px",background:"linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)",borderRadius:"8px",marginBottom:"10px"}}>
                   <p style={{fontSize:"12px",color:"#1976D2",fontWeight:"700"}}>📱 {order.phoneNumber}</p>
@@ -1394,16 +1420,27 @@ const OrdersPage = ({ user, isAdmin }) => {
                   {order.cryptoAction && <p style={{fontSize:"11px",color:"#F57F17",fontWeight:"600"}}>Action: {order.cryptoAction.toUpperCase()}</p>}
                 </div>
               )}
+              
               <div style={{display:"flex",gap:"8px"}}>
                 {activeTab==="my" && order.status==="pending" && (
                   <button onClick={() => confirmDelivery(order)} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer"}}>
                     CONFIRM DELIVERY
                   </button>
                 )}
-                {activeTab==="customer" && isAdmin && (
-                  <button onClick={() => deleteOrder(order.id)} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)",color:"#d32f2f",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer"}}>
-                    DELETE ORDER
-                  </button>
+                {activeTab==="customer" && isAdmin && order.status==="pending" && (
+                  <>
+                    <button onClick={() => approveOrder(order)} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer",boxShadow:"0 3px 8px rgba(76,175,80,0.3)"}}>
+                      ✅ APPROVE & COMPLETE
+                    </button>
+                    <button onClick={() => cancelAndRefund(order)} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)",color:"#d32f2f",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer"}}>
+                      🗑️ CANCEL & REFUND
+                    </button>
+                  </>
+                )}
+                {activeTab==="customer" && isAdmin && order.status==="completed" && (
+                  <div style={{flex:1,padding:"12px",background:"#E8F5E9",borderRadius:"8px",textAlign:"center"}}>
+                    <p style={{fontSize:"13px",fontWeight:"800",color:"#4CAF50"}}>✅ COMPLETED</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -1413,6 +1450,8 @@ const OrdersPage = ({ user, isAdmin }) => {
     </div>
   );
 };
+
+
 const MoneyTransfer = ({ user }) => {
   const [fromCountry, setFromCountry] = useState(COUNTRIES[0]);
   const [toCountry, setToCountry] = useState(COUNTRIES[1]);

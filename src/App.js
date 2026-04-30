@@ -1,67 +1,49 @@
 import React, { useState, useEffect } from "react";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { collection, addDoc, doc, setDoc, getDoc, query, orderBy, onSnapshot, serverTimestamp, where, deleteDoc, updateDoc, getDocs } from "firebase/firestore";
+import { collection, addDoc, doc, setDoc, getDoc, query, orderBy, onSnapshot, serverTimestamp, where, deleteDoc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
 
 const PRODUCT_CATEGORIES = ["All", "Campus", "Food", "Thrift", "Clothes", "Accessories", "Electronics", "Other"];
 const SERVICE_CATEGORIES = ["All", "Airtime", "Data", "Bills", "Skills", "Gift Cards", "Crypto"];
 const ADMIN_UID = "Hnl2ncOnVtPWbnVTz3TcU2jJUXy1";
-const WELCOME_BONUS = 3000;
+const WELCOME_BONUS = 5000;
 
 const GIFT_CARD_TYPES = [
-  { name: "iTunes", logo: "🍎", color: "#000000" },
-  { name: "Google Play", logo: "▶️", color: "#34A853" },
-  { name: "Steam", logo: "🎮", color: "#171A21" },
-  { name: "Amazon", logo: "📦", color: "#FF9900" },
-  { name: "Xbox", logo: "🎮", color: "#107C10" },
-  { name: "PlayStation", logo: "🎮", color: "#003791" },
-  { name: "Spotify", logo: "🎵", color: "#1DB954" },
-  { name: "Netflix", logo: "🎬", color: "#E50914" }
+  { name: "iTunes", logo: "🍎" },
+  { name: "Google Play", logo: "▶️" },
+  { name: "Steam", logo: "🎮" },
+  { name: "Amazon", logo: "📦" },
+  { name: "Xbox", logo: "🎮" },
+  { name: "PlayStation", logo: "🎮" },
+  { name: "Spotify", logo: "🎵" },
+  { name: "Netflix", logo: "🎬" }
 ];
 
+const NIGERIAN_BANKS = ["OPay", "Zenith Bank", "GTBank", "Access Bank", "First Bank", "UBA", "Kuda", "Palmpay", "Polaris Bank", "Wema Bank", "Union Bank", "Sterling Bank", "Fidelity Bank", "Keystone Bank", "FCMB", "Ecobank", "Stanbic IBTC", "Heritage Bank", "Jaiz Bank", "Providus Bank", "SunTrust Bank", "Globus Bank", "VFD Microfinance Bank", "Moniepoint", "Rubies Bank", "Sparkle Bank", "Unity Bank", "Taj Bank", "Titan Trust Bank", "PremiumTrust Bank"];
+
 const COUNTRIES = [
-  { 
-    name: "Nigeria", code: "NG", currency: "NGN", symbol: "₦", rate: 1, flag: "🇳🇬",
-    banks: ["OPay", "Zenith Bank", "GTBank", "Access Bank", "First Bank", "UBA", "Kuda", "Palmpay"]
-  },
-  { 
-    name: "United States", code: "US", currency: "USD", symbol: "$", rate: 1580, flag: "🇺🇸",
-    banks: ["Bank of America", "Chase", "Wells Fargo", "Citibank", "US Bank", "Capital One"]
-  },
-  { 
-    name: "United Kingdom", code: "GB", currency: "GBP", symbol: "£", rate: 1950, flag: "🇬🇧",
-    banks: ["HSBC", "Barclays", "Lloyds", "NatWest", "Santander", "TSB"]
-  },
-  { 
-    name: "Canada", code: "CA", currency: "CAD", symbol: "C$", rate: 1150, flag: "🇨🇦",
-    banks: ["TD Bank", "RBC", "Scotiabank", "BMO", "CIBC"]
-  },
-  { 
-    name: "Ghana", code: "GH", currency: "GHS", symbol: "GH₵", rate: 130, flag: "🇬🇭",
-    banks: ["GCB Bank", "Ecobank", "Zenith Bank Ghana", "Stanbic Bank", "Fidelity Bank"]
-  },
-  { 
-    name: "Kenya", code: "KE", currency: "KES", symbol: "KSh", rate: 12, flag: "🇰🇪",
-    banks: ["KCB Bank", "Equity Bank", "Co-operative Bank", "Barclays Kenya", "Standard Chartered"]
-  },
-  { 
-    name: "South Africa", code: "ZA", currency: "ZAR", symbol: "R", rate: 85, flag: "🇿🇦",
-    banks: ["Standard Bank", "Absa", "FNB", "Nedbank", "Capitec"]
-  },
-  { 
-    name: "Europe", code: "EU", currency: "EUR", symbol: "€", rate: 1680, flag: "🇪🇺",
-    banks: ["Deutsche Bank", "BNP Paribas", "Santander", "ING", "UniCredit"]
-  }
+  { name: "Nigeria", code: "NG", currency: "NGN", symbol: "₦", rate: 1, flag: "🇳🇬", banks: NIGERIAN_BANKS },
+  { name: "United States", code: "US", currency: "USD", symbol: "$", rate: 1580, flag: "🇺🇸", banks: ["Bank of America", "Chase", "Wells Fargo", "Citibank", "US Bank", "Capital One", "PNC Bank", "TD Bank", "Truist Bank", "Fifth Third Bank"] },
+  { name: "United Kingdom", code: "GB", currency: "GBP", symbol: "£", rate: 1950, flag: "🇬🇧", banks: ["HSBC", "Barclays", "Lloyds", "NatWest", "Santander", "TSB", "Nationwide", "Metro Bank", "Monzo", "Revolut"] },
+  { name: "Canada", code: "CA", currency: "CAD", symbol: "C$", rate: 1150, flag: "🇨🇦", banks: ["TD Bank", "RBC", "Scotiabank", "BMO", "CIBC", "National Bank", "Tangerine", "Simplii"] },
+  { name: "Ghana", code: "GH", currency: "GHS", symbol: "GH₵", rate: 130, flag: "🇬🇭", banks: ["GCB Bank", "Ecobank Ghana", "Zenith Bank Ghana", "Stanbic Bank", "Fidelity Bank", "CalBank", "Access Bank Ghana", "Absa Bank", "Standard Chartered Ghana", "Prudential Bank"] },
+  { name: "Kenya", code: "KE", currency: "KES", symbol: "KSh", rate: 12, flag: "🇰🇪", banks: ["KCB Bank", "Equity Bank", "Co-operative Bank", "Barclays Kenya", "Standard Chartered Kenya", "Diamond Trust Bank", "I&M Bank", "National Bank of Kenya", "Stanbic Bank Kenya"] },
+  { name: "South Africa", code: "ZA", currency: "ZAR", symbol: "R", rate: 85, flag: "🇿🇦", banks: ["Standard Bank", "Absa", "FNB", "Nedbank", "Capitec", "Discovery Bank", "TymeBank", "African Bank", "Bidvest Bank"] },
+  { name: "France", code: "FR", currency: "EUR", symbol: "€", rate: 1680, flag: "🇫🇷", banks: ["BNP Paribas", "Crédit Agricole", "Société Générale", "LCL", "Banque Postale", "Crédit Mutuel", "HSBC France", "Boursorama"] },
+  { name: "Germany", code: "DE", currency: "EUR", symbol: "€", rate: 1680, flag: "🇩🇪", banks: ["Deutsche Bank", "Commerzbank", "DZ Bank", "KfW", "N26", "ING Germany", "Postbank", "Sparkasse"] },
+  { name: "Italy", code: "IT", currency: "EUR", symbol: "€", rate: 1680, flag: "🇮🇹", banks: ["UniCredit", "Intesa Sanpaolo", "Banco BPM", "BPER Banca", "Monte dei Paschi", "UBI Banca"] },
+  { name: "Spain", code: "ES", currency: "EUR", symbol: "€", rate: 1680, flag: "🇪🇸", banks: ["Santander", "BBVA", "CaixaBank", "Bankia", "Sabadell", "Bankinter", "ING Spain"] },
+  { name: "UAE", code: "AE", currency: "AED", symbol: "AED", rate: 430, flag: "🇦🇪", banks: ["Emirates NBD", "First Abu Dhabi Bank", "Dubai Islamic Bank", "ADCB", "Mashreq Bank", "RAKBANK", "Commercial Bank of Dubai"] }
 ];
 
 const CRYPTO_COINS = [
-  { name: "Bitcoin", symbol: "BTC", price: 95000000, icon: "₿", color: "#F7931A" },
-  { name: "Ethereum", symbol: "ETH", price: 5200000, icon: "Ξ", color: "#627EEA" },
-  { name: "USDT", symbol: "USDT", price: 1580, icon: "₮", color: "#26A17B" },
-  { name: "BNB", symbol: "BNB", price: 950000, icon: "BNB", color: "#F3BA2F" },
-  { name: "Litecoin", symbol: "LTC", price: 280000, icon: "Ł", color: "#345D9D" },
-  { name: "Dogecoin", symbol: "DOGE", price: 580, icon: "Ð", color: "#C2A633" }
+  { name: "Bitcoin", symbol: "BTC", icon: "₿" },
+  { name: "Ethereum", symbol: "ETH", icon: "Ξ" },
+  { name: "USDT", symbol: "USDT", icon: "₮" },
+  { name: "BNB", symbol: "BNB", icon: "BNB" },
+  { name: "Litecoin", symbol: "LTC", icon: "Ł" },
+  { name: "Dogecoin", symbol: "DOGE", icon: "Ð" }
 ];
 
 const handleBuyProduct = async (product, user) => {
@@ -166,6 +148,8 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [section, setSection] = useState("products");
   const [page, setPage] = useState("browse");
+  const [editingItem, setEditingItem] = useState(null);
+  
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -173,6 +157,7 @@ const App = () => {
     });
     return () => unsub();
   }, []);
+  
   if (loading) return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)"}}>
       <div style={{textAlign:"center"}}>
@@ -181,8 +166,10 @@ const App = () => {
       </div>
     </div>
   );
+  
   if (!user) return <AuthPage onLogin={setUser} />;
   const isAdmin = user.uid === ADMIN_UID;
+  
   return (
     <div style={{background:"linear-gradient(to bottom, #f8f9fa 0%, #e9ecef 100%)",minHeight:"100vh"}}>
       <style>{`
@@ -194,20 +181,20 @@ const App = () => {
       <Header user={user} section={section} setSection={setSection} setPage={setPage} isAdmin={isAdmin} />
       {section === "products" && (
         <>
-          {page === "browse" && <ProductsBrowse user={user} isAdmin={isAdmin} setPage={setPage} />}
-          {page === "add-product" && isAdmin && <AddProduct user={user} setPage={setPage} />}
+          {page === "browse" && <ProductsBrowse user={user} isAdmin={isAdmin} setPage={setPage} setEditingItem={setEditingItem} />}
+          {page === "add-product" && isAdmin && <AddProduct user={user} setPage={setPage} editingItem={editingItem} setEditingItem={setEditingItem} />}
         </>
       )}
       {section === "services" && (
         <>
-          {page === "browse" && <ServicesBrowse user={user} isAdmin={isAdmin} setPage={setPage} />}
-          {page === "add-service" && isAdmin && <AddService user={user} setPage={setPage} />}
+          {page === "browse" && <ServicesBrowse user={user} isAdmin={isAdmin} setPage={setPage} setEditingItem={setEditingItem} />}
+          {page === "add-service" && isAdmin && <AddService user={user} setPage={setPage} editingItem={editingItem} setEditingItem={setEditingItem} />}
         </>
       )}
       {section === "tickets" && (
         <>
-          {page === "browse" && <TicketsBrowse user={user} isAdmin={isAdmin} setPage={setPage} />}
-          {page === "add-ticket" && isAdmin && <AddTicket user={user} setPage={setPage} />}
+          {page === "browse" && <TicketsBrowse user={user} isAdmin={isAdmin} setPage={setPage} setEditingItem={setEditingItem} />}
+          {page === "add-ticket" && isAdmin && <AddTicket user={user} setPage={setPage} editingItem={editingItem} setEditingItem={setEditingItem} />}
         </>
       )}
       {page === "profile" && <ProfilePage user={user} />}
@@ -226,6 +213,7 @@ const AuthPage = ({ onLogin }) => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -247,7 +235,8 @@ const AuthPage = ({ onLogin }) => {
           createdAt: serverTimestamp(),
           rating: 0,
           totalSales: 0,
-          wallet: WELCOME_BONUS
+          wallet: WELCOME_BONUS,
+          notifications: true
         });
         alert(`🎉 Welcome! You got ₦${WELCOME_BONUS.toLocaleString()} bonus!`);
         onLogin(cred.user);
@@ -257,6 +246,7 @@ const AuthPage = ({ onLogin }) => {
     }
     setLoading(false);
   };
+  
   return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",padding:"20px"}}>
       <div style={{background:"white",padding:"36px",borderRadius:"20px",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",width:"100%",maxWidth:"400px",animation:"fadeIn 0.6s ease"}}>
@@ -404,8 +394,7 @@ const AddMoneyModal = ({ user, onClose }) => {
     </div>
   );
 };
-
-const ProductsBrowse = ({ user, isAdmin, setPage }) => {
+const ProductsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
   const [products, setProducts] = useState([]);
   const [category, setCategory] = useState("All");
   const [search, setSearch] = useState("");
@@ -420,11 +409,26 @@ const ProductsBrowse = ({ user, isAdmin, setPage }) => {
     if (search && !p.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+  
+  const handleEdit = (product) => {
+    setEditingItem(product);
+    setPage("add-product");
+  };
+  
+  const handleDelete = async (productId) => {
+    if (!window.confirm("Delete this product?")) return;
+    try {
+      await deleteDoc(doc(db, "products", productId));
+      alert("✅ Product deleted!");
+    } catch (err) { alert("Error: " + err.message); }
+  };
+  
   if (selectedProduct) return <ProductDetail product={selectedProduct} user={user} onBack={() => setSelectedProduct(null)} />;
+  
   return (
     <div style={{maxWidth:"1200px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
       {isAdmin && (
-        <button onClick={() => setPage("add-product")} style={{position:"fixed",bottom:"90px",right:"20px",width:"56px",height:"56px",borderRadius:"50%",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",fontSize:"28px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(255,107,53,0.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+        <button onClick={() => {setEditingItem(null); setPage("add-product");}} style={{position:"fixed",bottom:"90px",right:"20px",width:"56px",height:"56px",borderRadius:"50%",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",fontSize:"28px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(255,107,53,0.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
       )}
       <input type="text" placeholder="🔍 Search..." value={search} onChange={(e) => setSearch(e.target.value)} style={{width:"100%",padding:"12px 16px",marginBottom:"14px",border:"2px solid #f0f0f0",borderRadius:"10px",fontSize:"14px",fontWeight:"500",outline:"none"}} />
       <div style={{display:"flex",gap:"6px",marginBottom:"16px",overflowX:"auto",paddingBottom:"6px"}}>
@@ -442,19 +446,31 @@ const ProductsBrowse = ({ user, isAdmin, setPage }) => {
       ) : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(240px, 1fr))",gap:"14px"}}>
           {filtered.map(product => (
-            <div key={product.id} onClick={() => setSelectedProduct(product)} className="card-hover" style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",cursor:"pointer"}}>
-              {product.imageUrl ? (
-                <img src={product.imageUrl} alt={product.title} style={{width:"100%",height:"160px",objectFit:"cover"}} />
-              ) : (
-                <div style={{width:"100%",height:"160px",background:"linear-gradient(135deg, #FFF5F2 0%, #FFE5DC 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <svg width="50" height="50" fill="#FF6B35" viewBox="0 0 24 24" opacity="0.3"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
+            <div key={product.id} style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",position:"relative"}}>
+              <div onClick={() => setSelectedProduct(product)} className="card-hover" style={{cursor:"pointer"}}>
+                {product.imageUrl ? (
+                  <img src={product.imageUrl} alt={product.title} style={{width:"100%",height:"160px",objectFit:"cover"}} />
+                ) : (
+                  <div style={{width:"100%",height:"160px",background:"linear-gradient(135deg, #FFF5F2 0%, #FFE5DC 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <svg width="50" height="50" fill="#FF6B35" viewBox="0 0 24 24" opacity="0.3"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
+                  </div>
+                )}
+                <div style={{padding:"12px"}}>
+                  <div style={{display:"inline-block",padding:"3px 8px",background:"#FFF5F2",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#FF6B35",marginBottom:"6px",textTransform:"uppercase"}}>{product.category}</div>
+                  <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"8px",color:"#2C3E50",lineHeight:"1.2"}}>{product.title}</h3>
+                  <p style={{fontSize:"18px",fontWeight:"900",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{product.price?.toLocaleString()}</p>
+                </div>
+              </div>
+              {isAdmin && product.sellerId === user.uid && (
+                <div style={{position:"absolute",top:"8px",right:"8px",display:"flex",gap:"6px"}}>
+                  <button onClick={() => handleEdit(product)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(33,150,243,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                    <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                  </button>
+                  <button onClick={() => handleDelete(product.id)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(244,67,54,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                    <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                  </button>
                 </div>
               )}
-              <div style={{padding:"12px"}}>
-                <div style={{display:"inline-block",padding:"3px 8px",background:"#FFF5F2",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#FF6B35",marginBottom:"6px",textTransform:"uppercase"}}>{product.category}</div>
-                <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"8px",color:"#2C3E50",lineHeight:"1.2"}}>{product.title}</h3>
-                <p style={{fontSize:"18px",fontWeight:"900",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{product.price?.toLocaleString()}</p>
-              </div>
             </div>
           ))}
         </div>
@@ -500,45 +516,62 @@ const ProductDetail = ({ product, user, onBack }) => {
   );
 };
 
-const AddProduct = ({ user, setPage }) => {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [category, setCategory] = useState("Campus");
+const AddProduct = ({ user, setPage, editingItem, setEditingItem }) => {
+  const [title, setTitle] = useState(editingItem?.title || "");
+  const [description, setDescription] = useState(editingItem?.description || "");
+  const [price, setPrice] = useState(editingItem?.price || "");
+  const [category, setCategory] = useState(editingItem?.category || "Campus");
   const [image, setImage] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  
   const handleImageChange = (e) => { if (e.target.files[0]) setImage(e.target.files[0]); };
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     if (!title.trim() || !description.trim() || !price) { setError("Please fill all fields"); return; }
     setUploading(true);
     try {
-      let imageUrl = "";
+      let imageUrl = editingItem?.imageUrl || "";
       if (image) {
         const imageRef = ref(storage, `products/${user.uid}/${Date.now()}_${image.name}`);
         await uploadBytes(imageRef, image);
         imageUrl = await getDownloadURL(imageRef);
       }
-      await addDoc(collection(db, "products"), {
+      
+      const productData = {
         title: title.trim(),
         description: description.trim(),
         price: parseFloat(price),
         category,
         imageUrl,
         sellerId: user.uid,
-        createdAt: serverTimestamp(),
         status: "active"
-      });
-      alert("✅ Product added!");
+      };
+      
+      if (editingItem) {
+        await updateDoc(doc(db, "products", editingItem.id), productData);
+        alert("✅ Product updated!");
+      } else {
+        await addDoc(collection(db, "products"), {
+          ...productData,
+          createdAt: serverTimestamp()
+        });
+        alert("✅ Product added!");
+      }
+      
+      setEditingItem(null);
       setPage("browse");
     } catch (err) { setError(err.message); }
     setUploading(false);
   };
+  
   return (
     <div style={{maxWidth:"550px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
-      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Add Product</h2>
+      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+        {editingItem ? "Edit Product" : "Add Product"}
+      </h2>
       <form onSubmit={handleSubmit} style={{background:"white",padding:"20px",borderRadius:"14px",boxShadow:"0 4px 16px rgba(0,0,0,0.1)"}}>
         <div style={{marginBottom:"16px"}}>
           <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Title</label>
@@ -562,19 +595,21 @@ const AddProduct = ({ user, setPage }) => {
           <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Image</label>
           <input type="file" accept="image/*" onChange={handleImageChange} style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"13px",fontWeight:"600",cursor:"pointer"}} />
           {image && <p style={{marginTop:"8px",fontSize:"13px",color:"#FF6B35",fontWeight:"700"}}>✓ {image.name}</p>}
+          {editingItem?.imageUrl && !image && <p style={{marginTop:"8px",fontSize:"13px",color:"#4CAF50",fontWeight:"700"}}>✓ Current image will be kept</p>}
         </div>
         {error && <div style={{color:"#d32f2f",marginBottom:"16px",fontSize:"12px",fontWeight:"700",padding:"10px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
         <div style={{display:"flex",gap:"8px"}}>
-          <button type="button" onClick={() => setPage("browse")} style={{flex:1,padding:"12px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:"pointer"}}>Cancel</button>
+          <button type="button" onClick={() => {setEditingItem(null); setPage("browse");}} style={{flex:1,padding:"12px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:"pointer"}}>Cancel</button>
           <button type="submit" disabled={uploading} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:uploading?"not-allowed":"pointer",boxShadow:"0 4px 10px rgba(255,107,53,0.4)"}}>
-            {uploading ? "ADDING..." : "ADD PRODUCT"}
+            {uploading ? (editingItem ? "UPDATING..." : "ADDING...") : (editingItem ? "UPDATE" : "ADD PRODUCT")}
           </button>
         </div>
       </form>
     </div>
   );
 };
-const ServicesBrowse = ({ user, isAdmin, setPage }) => {
+
+const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
   const [services, setServices] = useState([]);
   const [category, setCategory] = useState("All");
   useEffect(() => {
@@ -583,10 +618,24 @@ const ServicesBrowse = ({ user, isAdmin, setPage }) => {
     return () => unsub();
   }, []);
   const filtered = services.filter(s => category === "All" || s.category === category);
+  
+  const handleEdit = (service) => {
+    setEditingItem(service);
+    setPage("add-service");
+  };
+  
+  const handleDelete = async (serviceId) => {
+    if (!window.confirm("Delete this service?")) return;
+    try {
+      await deleteDoc(doc(db, "services", serviceId));
+      alert("✅ Service deleted!");
+    } catch (err) { alert("Error: " + err.message); }
+  };
+  
   return (
     <div style={{maxWidth:"1200px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
       {isAdmin && (
-        <button onClick={() => setPage("add-service")} style={{position:"fixed",bottom:"90px",right:"20px",width:"56px",height:"56px",borderRadius:"50%",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",fontSize:"28px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(76,175,80,0.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+        <button onClick={() => {setEditingItem(null); setPage("add-service");}} style={{position:"fixed",bottom:"90px",right:"20px",width:"56px",height:"56px",borderRadius:"50%",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",fontSize:"28px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(76,175,80,0.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
       )}
       <div style={{display:"flex",gap:"6px",marginBottom:"16px",overflowX:"auto",paddingBottom:"6px"}}>
         {SERVICE_CATEGORIES.map(cat => (
@@ -605,39 +654,42 @@ const ServicesBrowse = ({ user, isAdmin, setPage }) => {
           {filtered.map(service => {
             const cardType = service.category === "Gift Cards" && service.cardType ? GIFT_CARD_TYPES.find(c => c.name === service.cardType) : null;
             return (
-              <div key={service.id} onClick={() => {
-                if (service.sellerId === user.uid) {
-                  alert("This is your own service!");
-                } else {
-                  if (window.confirm(`Buy ${service.title} for ₦${service.price?.toLocaleString()}?`)) {
-                    handleBuyService(service, user);
+              <div key={service.id} style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",position:"relative"}}>
+                <div onClick={() => {
+                  if (service.sellerId === user.uid) {
+                    alert("This is your own service!");
+                  } else {
+                    if (window.confirm(`Buy ${service.title} for ₦${service.price?.toLocaleString()}?`)) {
+                      handleBuyService(service, user);
+                    }
                   }
-                }
-              }} className="card-hover" style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",cursor:"pointer"}}>
-                {cardType ? (
-                  <div style={{width:"100%",height:"140px",background:"linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"70px"}}>
-                    {cardType.logo}
-                  </div>
-                ) : service.imageUrl ? (
-                  <div style={{width:"100%",height:"140px",background:"linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:"12px"}}>
-                    <img src={service.imageUrl} alt={service.title} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}} />
-                  </div>
-                ) : null}
-                <div style={{padding:"12px"}}>
-                  <div style={{display:"inline-block",padding:"3px 8px",background:"linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%)",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#4CAF50",marginBottom:"6px",textTransform:"uppercase",border:"1px solid #4CAF50"}}>{service.category}</div>
-                  <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50",lineHeight:"1.2"}}>{service.title}</h3>
-                  {service.category === "Crypto" && service.cryptoType && (
-                    <div style={{padding:"6px",background:"#FFF9C4",borderRadius:"6px",marginBottom:"6px"}}>
-                      <p style={{fontSize:"11px",fontWeight:"800",color:"#F57F17"}}>{service.cryptoType}</p>
+                }} className="card-hover" style={{cursor:"pointer"}}>
+                  {cardType && (
+                    <div style={{width:"100%",height:"140px",background:"linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"70px"}}>
+                      {cardType.logo}
                     </div>
                   )}
-                  <p style={{fontSize:"18px",fontWeight:"900",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{service.price?.toLocaleString()}</p>
-                  {service.sellerId === user.uid && (
-                    <div style={{marginTop:"10px",padding:"6px",background:"linear-gradient(135deg, #FFF9C4 0%, #FFF59D 100%)",borderRadius:"6px",textAlign:"center",border:"1px solid #FBC02D"}}>
-                      <p style={{fontSize:"10px",fontWeight:"800",color:"#F57F17"}}>YOUR SERVICE</p>
-                    </div>
-                  )}
+                  <div style={{padding:"12px"}}>
+                    <div style={{display:"inline-block",padding:"3px 8px",background:"linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%)",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#4CAF50",marginBottom:"6px",textTransform:"uppercase",border:"1px solid #4CAF50"}}>{service.category}</div>
+                    <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50",lineHeight:"1.2"}}>{service.title}</h3>
+                    {service.category === "Crypto" && service.cryptoType && (
+                      <div style={{padding:"6px",background:"#FFF9C4",borderRadius:"6px",marginBottom:"6px"}}>
+                        <p style={{fontSize:"11px",fontWeight:"800",color:"#F57F17"}}>{service.cryptoType}</p>
+                      </div>
+                    )}
+                    <p style={{fontSize:"18px",fontWeight:"900",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{service.price?.toLocaleString()}</p>
+                  </div>
                 </div>
+                {isAdmin && service.sellerId === user.uid && (
+                  <div style={{position:"absolute",top:"8px",right:"8px",display:"flex",gap:"6px"}}>
+                    <button onClick={() => handleEdit(service)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(33,150,243,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                      <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    </button>
+                    <button onClick={() => handleDelete(service.id)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(244,67,54,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                      <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -646,11 +698,10 @@ const ServicesBrowse = ({ user, isAdmin, setPage }) => {
     </div>
   );
 };
-
-const AddService = ({ user, setPage }) => {
-  const [category, setCategory] = useState("Airtime");
+const AddService = ({ user, setPage, editingItem, setEditingItem }) => {
+  const [category, setCategory] = useState(editingItem?.category || "Airtime");
   const [title, setTitle] = useState("");
-  const [price, setPrice] = useState("");
+  const [price, setPrice] = useState(editingItem?.price || "");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [network, setNetwork] = useState("MTN");
@@ -658,38 +709,29 @@ const AddService = ({ user, setPage }) => {
   const [dataNetwork, setDataNetwork] = useState("MTN");
   const [dataPlan, setDataPlan] = useState("1GB - ₦500");
   const [billType, setBillType] = useState("NEPA");
-  const [cardType, setCardType] = useState("iTunes");
-  const [cryptoType, setCryptoType] = useState("Bitcoin");
+  const [cardType, setCardType] = useState(editingItem?.cardType || "iTunes");
+  const [cryptoType, setCryptoType] = useState(editingItem?.cryptoType || "Bitcoin");
   const [cryptoAmount, setCryptoAmount] = useState("");
-  const [cryptoWallet, setCryptoWallet] = useState("");
+  const [cryptoWallet, setCryptoWallet] = useState(editingItem?.cryptoWallet || "");
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     let finalTitle = title;
-    if (category === "Airtime") {
-      finalTitle = `${network} ₦${airtimeAmount} Airtime`;
-    }
-    if (category === "Data") {
-      finalTitle = `${dataNetwork} ${dataPlan.split(' - ')[0]} Data`;
-    }
-    if (category === "Bills") {
-      finalTitle = `${billType} Bill Payment`;
-    }
+    
+    if (category === "Airtime") finalTitle = `${network} ₦${airtimeAmount} Airtime`;
+    if (category === "Data") finalTitle = `${dataNetwork} ${dataPlan.split(' - ')[0]} Data`;
+    if (category === "Bills") finalTitle = `${billType} Bill Payment`;
     if (category === "Gift Cards") {
-      if (!title.trim()) {
-        setError("Enter card details (e.g., $50, $100)");
-        return;
-      }
+      if (!title.trim()) { setError("Enter card details (e.g., $50, $100)"); return; }
       finalTitle = `${cardType} ${title.trim()}`;
     }
     if (category === "Crypto") {
-      if (!cryptoAmount.trim() || !cryptoWallet.trim()) {
-        setError("Enter crypto amount and your wallet address");
-        return;
-      }
+      if (!cryptoAmount.trim() || !cryptoWallet.trim()) { setError("Enter crypto amount and your wallet address"); return; }
       finalTitle = `${cryptoAmount} ${cryptoType}`;
     }
     if (!finalTitle.trim() || !price) { setError("Fill all fields"); return; }
+    
     setUploading(true);
     try {
       const serviceData = { 
@@ -697,26 +739,37 @@ const AddService = ({ user, setPage }) => {
         price: parseFloat(price), 
         category, 
         sellerId: user.uid, 
-        createdAt: serverTimestamp(), 
         status: "active"
       };
-      if (category === "Gift Cards") {
-        serviceData.cardType = cardType;
-      }
+      if (category === "Gift Cards") serviceData.cardType = cardType;
       if (category === "Crypto") {
         serviceData.cryptoType = cryptoType;
         serviceData.cryptoWallet = cryptoWallet.trim();
         serviceData.cryptoAmount = cryptoAmount.trim();
       }
-      await addDoc(collection(db, "services"), serviceData);
-      alert("✅ Service added!");
+      
+      if (editingItem) {
+        await updateDoc(doc(db, "services", editingItem.id), serviceData);
+        alert("✅ Service updated!");
+      } else {
+        await addDoc(collection(db, "services"), {
+          ...serviceData,
+          createdAt: serverTimestamp()
+        });
+        alert("✅ Service added!");
+      }
+      
+      setEditingItem(null);
       setPage("browse");
     } catch (err) { setError(err.message); }
     setUploading(false);
   };
+  
   return (
     <div style={{maxWidth:"550px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
-      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Add Service</h2>
+      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+        {editingItem ? "Edit Service" : "Add Service"}
+      </h2>
       <form onSubmit={handleSubmit} style={{background:"white",padding:"20px",borderRadius:"14px",boxShadow:"0 4px 16px rgba(0,0,0,0.1)"}}>
         <div style={{marginBottom:"16px"}}>
           <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Service Type</label>
@@ -808,16 +861,17 @@ const AddService = ({ user, setPage }) => {
         </div>
         {error && <div style={{color:"#d32f2f",marginBottom:"16px",fontSize:"12px",fontWeight:"700",padding:"10px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
         <div style={{display:"flex",gap:"8px"}}>
-          <button type="button" onClick={() => setPage("browse")} style={{flex:1,padding:"12px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:"pointer"}}>Cancel</button>
+          <button type="button" onClick={() => {setEditingItem(null); setPage("browse");}} style={{flex:1,padding:"12px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:"pointer"}}>Cancel</button>
           <button type="submit" disabled={uploading} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:uploading?"not-allowed":"pointer",boxShadow:"0 4px 10px rgba(76,175,80,0.4)"}}>
-            {uploading ? "ADDING..." : "ADD SERVICE"}
+            {uploading ? (editingItem ? "UPDATING..." : "ADDING...") : (editingItem ? "UPDATE" : "ADD SERVICE")}
           </button>
         </div>
       </form>
     </div>
   );
 };
-const TicketsBrowse = ({ user, isAdmin, setPage }) => {
+
+const TicketsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
   const [tickets, setTickets] = useState([]);
   const [ticketType, setTicketType] = useState("All");
   useEffect(() => {
@@ -826,10 +880,24 @@ const TicketsBrowse = ({ user, isAdmin, setPage }) => {
     return () => unsub();
   }, []);
   const filtered = tickets.filter(t => ticketType === "All" || t.ticketType === ticketType);
+  
+  const handleEdit = (ticket) => {
+    setEditingItem(ticket);
+    setPage("add-ticket");
+  };
+  
+  const handleDelete = async (ticketId) => {
+    if (!window.confirm("Delete this ticket?")) return;
+    try {
+      await deleteDoc(doc(db, "tickets", ticketId));
+      alert("✅ Ticket deleted!");
+    } catch (err) { alert("Error: " + err.message); }
+  };
+  
   return (
     <div style={{maxWidth:"1200px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
       {isAdmin && (
-        <button onClick={() => setPage("add-ticket")} style={{position:"fixed",bottom:"90px",right:"20px",width:"56px",height:"56px",borderRadius:"50%",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",color:"white",border:"none",fontSize:"28px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(156,39,176,0.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+        <button onClick={() => {setEditingItem(null); setPage("add-ticket");}} style={{position:"fixed",bottom:"90px",right:"20px",width:"56px",height:"56px",borderRadius:"50%",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",color:"white",border:"none",fontSize:"28px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(156,39,176,0.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
       )}
       <div style={{display:"flex",gap:"6px",marginBottom:"16px",overflowX:"auto",paddingBottom:"6px"}}>
         {["All","Event","Flight"].map(type => (
@@ -846,30 +914,42 @@ const TicketsBrowse = ({ user, isAdmin, setPage }) => {
       ) : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))",gap:"14px"}}>
           {filtered.map(t => (
-            <div key={t.id} onClick={() => {
-              if (t.sellerId === user.uid) {
-                alert("This is your own ticket!");
-              } else {
-                if (window.confirm(`Buy ${t.title} for ₦${t.price?.toLocaleString()}?`)) {
-                  handleBuyTicket(t, user);
+            <div key={t.id} style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",position:"relative"}}>
+              <div onClick={() => {
+                if (t.sellerId === user.uid) {
+                  alert("This is your own ticket!");
+                } else {
+                  if (window.confirm(`Buy ${t.title} for ₦${t.price?.toLocaleString()}?`)) {
+                    handleBuyTicket(t, user);
+                  }
                 }
-              }
-            }} className="card-hover" style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",cursor:"pointer"}}>
-              {t.imageUrl ? (
-                <img src={t.imageUrl} alt={t.title} style={{width:"100%",height:"160px",objectFit:"cover"}} />
-              ) : (
-                <div style={{width:"100%",height:"160px",background:t.ticketType==="Flight"?"linear-gradient(135deg, #E1F5FE 0%, #B3E5FC 100%)":"linear-gradient(135deg, #F3E5F5 0%, #E1BEE7 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <div style={{fontSize:"60px"}}>{t.ticketType === "Flight" ? "✈️" : "🎉"}</div>
+              }} className="card-hover" style={{cursor:"pointer"}}>
+                {t.imageUrl ? (
+                  <img src={t.imageUrl} alt={t.title} style={{width:"100%",height:"160px",objectFit:"cover"}} />
+                ) : (
+                  <div style={{width:"100%",height:"160px",background:t.ticketType==="Flight"?"linear-gradient(135deg, #E1F5FE 0%, #B3E5FC 100%)":"linear-gradient(135deg, #F3E5F5 0%, #E1BEE7 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <div style={{fontSize:"60px"}}>{t.ticketType === "Flight" ? "✈️" : "🎉"}</div>
+                  </div>
+                )}
+                <div style={{padding:"12px"}}>
+                  <div style={{display:"inline-block",padding:"3px 8px",background:"#F3E5F5",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#9C27B0",marginBottom:"6px",textTransform:"uppercase"}}>{t.ticketType}</div>
+                  <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50",lineHeight:"1.2"}}>{t.title}</h3>
+                  {t.eventDate && <p style={{fontSize:"12px",color:"#666",marginBottom:"4px",fontWeight:"600"}}>📅 {t.eventDate}</p>}
+                  {t.venue && <p style={{fontSize:"12px",color:"#666",marginBottom:"8px",fontWeight:"600"}}>📍 {t.venue}</p>}
+                  {t.airline && <p style={{fontSize:"12px",color:"#666",marginBottom:"8px",fontWeight:"600"}}>✈️ {t.airline}</p>}
+                  <p style={{fontSize:"20px",fontWeight:"900",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{t.price?.toLocaleString()}</p>
+                </div>
+              </div>
+              {isAdmin && t.sellerId === user.uid && (
+                <div style={{position:"absolute",top:"8px",right:"8px",display:"flex",gap:"6px"}}>
+                  <button onClick={() => handleEdit(t)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(33,150,243,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                    <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                  </button>
+                  <button onClick={() => handleDelete(t.id)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(244,67,54,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                    <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                  </button>
                 </div>
               )}
-              <div style={{padding:"12px"}}>
-                <div style={{display:"inline-block",padding:"3px 8px",background:"#F3E5F5",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#9C27B0",marginBottom:"6px",textTransform:"uppercase"}}>{t.ticketType}</div>
-                <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50",lineHeight:"1.2"}}>{t.title}</h3>
-                {t.eventDate && <p style={{fontSize:"12px",color:"#666",marginBottom:"4px",fontWeight:"600"}}>📅 {t.eventDate}</p>}
-                {t.venue && <p style={{fontSize:"12px",color:"#666",marginBottom:"8px",fontWeight:"600"}}>📍 {t.venue}</p>}
-                {t.airline && <p style={{fontSize:"12px",color:"#666",marginBottom:"8px",fontWeight:"600"}}>✈️ {t.airline}</p>}
-                <p style={{fontSize:"20px",fontWeight:"900",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{t.price?.toLocaleString()}</p>
-              </div>
             </div>
           ))}
         </div>
@@ -878,36 +958,38 @@ const TicketsBrowse = ({ user, isAdmin, setPage }) => {
   );
 };
 
-const AddTicket = ({ user, setPage }) => {
-  const [ticketType, setTicketType] = useState("Event");
-  const [title, setTitle] = useState("");
-  const [price, setPrice] = useState("");
-  const [eventDate, setEventDate] = useState("");
-  const [venue, setVenue] = useState("");
-  const [airline, setAirline] = useState("Air Peace");
-  const [route, setRoute] = useState("");
+const AddTicket = ({ user, setPage, editingItem, setEditingItem }) => {
+  const [ticketType, setTicketType] = useState(editingItem?.ticketType || "Event");
+  const [title, setTitle] = useState(editingItem?.title || "");
+  const [price, setPrice] = useState(editingItem?.price || "");
+  const [eventDate, setEventDate] = useState(editingItem?.eventDate || "");
+  const [venue, setVenue] = useState(editingItem?.venue || "");
+  const [airline, setAirline] = useState(editingItem?.airline || "Air Peace");
+  const [route, setRoute] = useState(editingItem?.route || "");
   const [image, setImage] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  
   const handleImageChange = (e) => { if (e.target.files[0]) setImage(e.target.files[0]); };
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     if (!title.trim() || !price) { setError("Fill required fields"); return; }
     setUploading(true);
     try {
-      let imageUrl = "";
+      let imageUrl = editingItem?.imageUrl || "";
       if (image) {
         const imageRef = ref(storage, `tickets/${user.uid}/${Date.now()}_${image.name}`);
         await uploadBytes(imageRef, image);
         imageUrl = await getDownloadURL(imageRef);
       }
+      
       const ticketData = { 
         title: title.trim(), 
         price: parseFloat(price), 
         ticketType, 
         sellerId: user.uid, 
-        createdAt: serverTimestamp(), 
         status: "active",
         imageUrl
       };
@@ -919,15 +1001,29 @@ const AddTicket = ({ user, setPage }) => {
         ticketData.airline = airline;
         ticketData.route = route.trim();
       }
-      await addDoc(collection(db, "tickets"), ticketData);
-      alert("✅ Ticket added!");
+      
+      if (editingItem) {
+        await updateDoc(doc(db, "tickets", editingItem.id), ticketData);
+        alert("✅ Ticket updated!");
+      } else {
+        await addDoc(collection(db, "tickets"), {
+          ...ticketData,
+          createdAt: serverTimestamp()
+        });
+        alert("✅ Ticket added!");
+      }
+      
+      setEditingItem(null);
       setPage("browse");
     } catch (err) { setError(err.message); }
     setUploading(false);
   };
+  
   return (
     <div style={{maxWidth:"550px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
-      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Add Ticket</h2>
+      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+        {editingItem ? "Edit Ticket" : "Add Ticket"}
+      </h2>
       <form onSubmit={handleSubmit} style={{background:"white",padding:"20px",borderRadius:"14px",boxShadow:"0 4px 16px rgba(0,0,0,0.1)"}}>
         <div style={{marginBottom:"16px"}}>
           <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Ticket Type</label>
@@ -977,9 +1073,9 @@ const AddTicket = ({ user, setPage }) => {
         </div>
         {error && <div style={{color:"#d32f2f",marginBottom:"16px",fontSize:"12px",fontWeight:"700",padding:"10px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
         <div style={{display:"flex",gap:"8px"}}>
-          <button type="button" onClick={() => setPage("browse")} style={{flex:1,padding:"12px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:"pointer"}}>Cancel</button>
+          <button type="button" onClick={() => {setEditingItem(null); setPage("browse");}} style={{flex:1,padding:"12px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:"pointer"}}>Cancel</button>
           <button type="submit" disabled={uploading} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:uploading?"not-allowed":"pointer",boxShadow:"0 4px 10px rgba(156,39,176,0.4)"}}>
-            {uploading ? "ADDING..." : "ADD TICKET"}
+            {uploading ? (editingItem ? "UPDATING..." : "ADDING...") : (editingItem ? "UPDATE" : "ADD TICKET")}
           </button>
         </div>
       </form>
@@ -988,12 +1084,21 @@ const AddTicket = ({ user, setPage }) => {
 };
 
 const OrdersPage = ({ user, isAdmin }) => {
-  const [orders, setOrders] = useState([]);
+  const [myOrders, setMyOrders] = useState([]);
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [activeTab, setActiveTab] = useState("my");
+  
   useEffect(() => {
-    const q = query(collection(db, "orders"), where("buyerId", "==", user.uid), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => { setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
-    return () => unsub();
-  }, [user]);
+    const myQ = query(collection(db, "orders"), where("buyerId", "==", user.uid), orderBy("createdAt", "desc"));
+    const myUnsub = onSnapshot(myQ, (snap) => { setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
+    if (isAdmin) {
+      const customerQ = query(collection(db, "orders"), where("sellerId", "==", user.uid), orderBy("createdAt", "desc"));
+      const customerUnsub = onSnapshot(customerQ, (snap) => { setCustomerOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
+      return () => { myUnsub(); customerUnsub(); };
+    }
+    return () => myUnsub();
+  }, [user, isAdmin]);
+  
   const confirmDelivery = async (order) => {
     if (!window.confirm("Confirm received?")) return;
     try {
@@ -1008,6 +1113,7 @@ const OrdersPage = ({ user, isAdmin }) => {
       window.location.reload();
     } catch (err) { alert("Error: " + err.message); }
   };
+  
   const deleteOrder = async (orderId) => {
     if (!window.confirm("Delete this order?")) return;
     try {
@@ -1015,17 +1121,30 @@ const OrdersPage = ({ user, isAdmin }) => {
       alert("✅ Order deleted!");
     } catch (err) { alert("Error: " + err.message); }
   };
+  
+  const currentOrders = activeTab === "my" ? myOrders : customerOrders;
+  
   return (
     <div style={{maxWidth:"700px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
-      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>My Orders</h2>
-      {orders.length === 0 ? (
+      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Orders</h2>
+      {isAdmin && (
+        <div style={{display:"flex",gap:"8px",marginBottom:"16px",background:"white",padding:"6px",borderRadius:"12px",boxShadow:"0 2px 8px rgba(0,0,0,0.08)"}}>
+          <button onClick={() => setActiveTab("my")} style={{flex:1,padding:"10px",background:activeTab==="my"?"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)":"transparent",color:activeTab==="my"?"white":"#666",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer",transition:"all 0.3s"}}>
+            My Orders ({myOrders.length})
+          </button>
+          <button onClick={() => setActiveTab("customer")} style={{flex:1,padding:"10px",background:activeTab==="customer"?"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)":"transparent",color:activeTab==="customer"?"white":"#666",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer",transition:"all 0.3s"}}>
+            Customer Orders ({customerOrders.length})
+          </button>
+        </div>
+      )}
+      {currentOrders.length === 0 ? (
         <div style={{textAlign:"center",padding:"60px 16px",background:"white",borderRadius:"14px"}}>
           <div style={{fontSize:"50px",marginBottom:"12px"}}>📦</div>
-          <p style={{fontSize:"16px",color:"#2C3E50",fontWeight:"800"}}>No orders yet</p>
+          <p style={{fontSize:"16px",color:"#2C3E50",fontWeight:"800"}}>{activeTab==="my"?"No orders yet":"No customer orders yet"}</p>
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:"12px"}}>
-          {orders.map(order => (
+          {currentOrders.map(order => (
             <div key={order.id} style={{background:"white",padding:"16px",borderRadius:"12px",boxShadow:"0 2px 10px rgba(0,0,0,0.08)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"start",marginBottom:"10px"}}>
                 <div>
@@ -1053,14 +1172,14 @@ const OrdersPage = ({ user, isAdmin }) => {
                 </div>
               )}
               <div style={{display:"flex",gap:"8px"}}>
-                {order.status === "pending" && (
-                  <button onClick={() => confirmDelivery(order)} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer",boxShadow:"0 3px 8px rgba(76,175,80,0.3)"}}>
+                {activeTab==="my" && order.status==="pending" && (
+                  <button onClick={() => confirmDelivery(order)} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer"}}>
                     CONFIRM DELIVERY
                   </button>
                 )}
-                {isAdmin && (
-                  <button onClick={() => deleteOrder(order.id)} style={{padding:"12px 16px",background:"linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)",color:"#d32f2f",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer"}}>
-                    DELETE
+                {activeTab==="customer" && isAdmin && (
+                  <button onClick={() => deleteOrder(order.id)} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)",color:"#d32f2f",border:"none",borderRadius:"8px",fontSize:"13px",fontWeight:"800",cursor:"pointer"}}>
+                    DELETE ORDER
                   </button>
                 )}
               </div>
@@ -1071,7 +1190,6 @@ const OrdersPage = ({ user, isAdmin }) => {
     </div>
   );
 };
-
 const MoneyTransfer = ({ user }) => {
   const [country, setCountry] = useState(COUNTRIES[0]);
   const [amount, setAmount] = useState("");
@@ -1080,8 +1198,10 @@ const MoneyTransfer = ({ user }) => {
   const [recipientAccount, setRecipientAccount] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  
   const nairaAmount = amount ? parseFloat(amount) : 0;
   const foreignAmount = country.code === "NG" ? nairaAmount : nairaAmount > 0 ? (nairaAmount / country.rate).toFixed(2) : "0.00";
+  
   const handleTransfer = async (e) => {
     e.preventDefault();
     setError("");
@@ -1120,13 +1240,14 @@ const MoneyTransfer = ({ user }) => {
     }
     setLoading(false);
   };
+  
   return (
     <div style={{maxWidth:"550px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
       <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #2196F3 0%, #1976D2 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Send Money</h2>
       <form onSubmit={handleTransfer} style={{background:"white",padding:"20px",borderRadius:"14px",boxShadow:"0 4px 16px rgba(0,0,0,0.1)"}}>
         <div style={{marginBottom:"16px"}}>
           <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"8px",color:"#2C3E50"}}>Select Country</label>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(2, 1fr)",gap:"8px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2, 1fr)",gap:"8px",maxHeight:"300px",overflowY:"auto"}}>
             {COUNTRIES.map(c => (
               <div key={c.code} onClick={() => {setCountry(c); setRecipientBank("");}} style={{padding:"10px",background:country.code===c.code?"linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)":"#f8f9fa",border:country.code===c.code?"2px solid #2196F3":"2px solid transparent",borderRadius:"8px",cursor:"pointer",textAlign:"center",transition:"all 0.3s"}}>
                 <div style={{fontSize:"20px",marginBottom:"3px"}}>{c.flag}</div>
@@ -1172,6 +1293,7 @@ const MoneyTransfer = ({ user }) => {
     </div>
   );
 };
+
 const SettingsPage = ({ user, setPage }) => {
   const [userData, setUserData] = useState(null);
   const [notifications, setNotifications] = useState(true);
@@ -1189,9 +1311,7 @@ const SettingsPage = ({ user, setPage }) => {
       await updateDoc(doc(db, "users", user.uid), { notifications: !notifications });
       setNotifications(!notifications);
       alert(`Notifications ${!notifications ? "enabled" : "disabled"}!`);
-    } catch (err) {
-      alert("Error: " + err.message);
-    }
+    } catch (err) { alert("Error: " + err.message); }
   };
   return (
     <div style={{maxWidth:"600px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
@@ -1223,40 +1343,27 @@ const SettingsPage = ({ user, setPage }) => {
             <div style={{width:"20px",height:"20px",borderRadius:"50%",background:"white",position:"absolute",top:"2px",left:notifications?"22px":"2px",transition:"all 0.3s",boxShadow:"0 2px 4px rgba(0,0,0,0.2)"}}></div>
           </div>
         </div>
-        <div style={{padding:"16px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{padding:"16px",borderBottom:"1px solid #f0f0f0"}}>
           <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
             <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"linear-gradient(135deg, #2196F3 0%, #1976D2 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
               <svg width="20" height="20" fill="white" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
             </div>
             <div>
               <p style={{fontSize:"14px",fontWeight:"800",color:"#2C3E50"}}>Version</p>
-              <p style={{fontSize:"12px",color:"#999",fontWeight:"600"}}>QuickSell v1.0.0</p>
+              <p style={{fontSize:"12px",color:"#999",fontWeight:"600"}}>QuickSell v2.0.0</p>
             </div>
           </div>
         </div>
-        <div style={{padding:"16px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{padding:"16px"}}>
           <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
             <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
               <svg width="20" height="20" fill="white" viewBox="0 0 24 24"><path d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/></svg>
             </div>
             <div>
               <p style={{fontSize:"14px",fontWeight:"800",color:"#2C3E50"}}>Help & Support</p>
-              <p style={{fontSize:"12px",color:"#999",fontWeight:"600"}}>Get help</p>
+              <p style={{fontSize:"12px",color:"#999",fontWeight:"600"}}>Contact: 9020853814</p>
             </div>
           </div>
-          <svg width="20" height="20" fill="#999" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
-        </div>
-        <div style={{padding:"16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
-            <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"linear-gradient(135deg, #607D8B 0%, #455A64 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <svg width="20" height="20" fill="white" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-            </div>
-            <div>
-              <p style={{fontSize:"14px",fontWeight:"800",color:"#2C3E50"}}>Terms & Privacy</p>
-              <p style={{fontSize:"12px",color:"#999",fontWeight:"600"}}>Legal information</p>
-            </div>
-          </div>
-          <svg width="20" height="20" fill="#999" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
         </div>
       </div>
       <button onClick={() => signOut(auth)} style={{width:"100%",marginTop:"16px",padding:"14px",background:"linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)",color:"#d32f2f",border:"none",borderRadius:"10px",fontSize:"14px",fontWeight:"900",cursor:"pointer"}}>
@@ -1286,7 +1393,7 @@ const ProfilePage = ({ user }) => {
           <p style={{color:"rgba(255,255,255,0.9)",fontSize:"12px",fontWeight:"700",marginBottom:"6px"}}>WALLET</p>
           <p style={{fontSize:"34px",fontWeight:"900",color:"white"}}>₦{(userData?.wallet || 0).toLocaleString()}</p>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"20px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"}}>
           <div style={{padding:"16px",background:"linear-gradient(135deg, #FFF5F2 0%, #FFE5DC 100%)",borderRadius:"10px",textAlign:"center",border:"2px solid #FF6B35"}}>
             <p style={{fontSize:"11px",color:"#FF6B35",fontWeight:"800",marginBottom:"4px"}}>RATING</p>
             <p style={{fontSize:"24px",fontWeight:"900",color:"#FF6B35"}}>⭐ {userData?.rating || 0}/5</p>
@@ -1301,7 +1408,7 @@ const ProfilePage = ({ user }) => {
   );
 };
 
-const NavBar = ({ page, setPage, section }) => {
+const NavBar = ({ page, setPage }) => {
   const icons = {
     browse: <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>,
     orders: <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>,

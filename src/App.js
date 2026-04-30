@@ -5,7 +5,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
 
 const PRODUCT_CATEGORIES = ["All", "Campus", "Food", "Thrift", "Clothes", "Accessories", "Electronics", "Other"];
-const SERVICE_CATEGORIES = ["All", "Airtime", "Data", "Bills", "Skills", "Gift Cards", "Crypto"];
+const SERVICE_CATEGORIES = ["All", "Airtime", "Data", "Bills", "Skills", "Gift Cards"];
 const ADMIN_UID = "Hnl2ncOnVtPWbnVTz3TcU2jJUXy1";
 const WELCOME_BONUS = 5000;
 
@@ -19,6 +19,22 @@ const GIFT_CARD_TYPES = [
   { name: "Spotify", logo: "🎵" },
   { name: "Netflix", logo: "🎬" }
 ];
+
+const NETWORK_PREFIXES = {
+  MTN: ["0803", "0806", "0810", "0813", "0814", "0816", "0903", "0906", "0913"],
+  Airtel: ["0802", "0808", "0812", "0901", "0902", "0907", "0911", "0912"],
+  Glo: ["0805", "0807", "0811", "0815", "0905"],
+  "9mobile": ["0809", "0817", "0818", "0908", "0909"]
+};
+
+const detectNetwork = (phoneNumber) => {
+  const cleaned = phoneNumber.replace(/\s+/g, '');
+  const prefix = cleaned.substring(0, 4);
+  for (const [network, prefixes] of Object.entries(NETWORK_PREFIXES)) {
+    if (prefixes.includes(prefix)) return network;
+  }
+  return null;
+};
 
 const NIGERIAN_BANKS = ["OPay", "Zenith Bank", "GTBank", "Access Bank", "First Bank", "UBA", "Kuda", "Palmpay", "Polaris Bank", "Wema Bank", "Union Bank", "Sterling Bank", "Fidelity Bank", "Keystone Bank", "FCMB", "Ecobank", "Stanbic IBTC", "Heritage Bank", "Jaiz Bank", "Providus Bank", "SunTrust Bank", "Globus Bank", "VFD Microfinance Bank", "Moniepoint", "Rubies Bank", "Sparkle Bank", "Unity Bank", "Taj Bank", "Titan Trust Bank", "PremiumTrust Bank"];
 
@@ -38,12 +54,12 @@ const COUNTRIES = [
 ];
 
 const CRYPTO_COINS = [
-  { name: "Bitcoin", symbol: "BTC", icon: "₿" },
-  { name: "Ethereum", symbol: "ETH", icon: "Ξ" },
-  { name: "USDT", symbol: "USDT", icon: "₮" },
-  { name: "BNB", symbol: "BNB", icon: "BNB" },
-  { name: "Litecoin", symbol: "LTC", icon: "Ł" },
-  { name: "Dogecoin", symbol: "DOGE", icon: "Ð" }
+  { name: "Bitcoin", symbol: "BTC", icon: "₿", buyRate: 95000000, sellRate: 93000000 },
+  { name: "Ethereum", symbol: "ETH", icon: "Ξ", buyRate: 5200000, sellRate: 5100000 },
+  { name: "USDT", symbol: "USDT", icon: "₮", buyRate: 1580, sellRate: 1570 },
+  { name: "BNB", symbol: "BNB", icon: "BNB", buyRate: 950000, sellRate: 930000 },
+  { name: "Litecoin", symbol: "LTC", icon: "Ł", buyRate: 280000, sellRate: 275000 },
+  { name: "Dogecoin", symbol: "DOGE", icon: "Ð", buyRate: 580, sellRate: 570 }
 ];
 
 const handleBuyProduct = async (product, user) => {
@@ -54,6 +70,7 @@ const handleBuyProduct = async (product, user) => {
       alert("Insufficient funds! Add money to your wallet.");
       return;
     }
+    if (!window.confirm(`Confirm purchase of ${product.title} for ₦${product.price?.toLocaleString()}?`)) return;
     await updateDoc(doc(db, "users", user.uid), { wallet: buyerWallet - product.price });
     await addDoc(collection(db, "orders"), {
       productId: product.id,
@@ -65,78 +82,7 @@ const handleBuyProduct = async (product, user) => {
       status: "pending",
       createdAt: serverTimestamp()
     });
-    alert("✅ Order placed!");
-    window.location.reload();
-  } catch (err) {
-    alert("Error: " + err.message);
-  }
-};
-
-const handleBuyService = async (service, user) => {
-  try {
-    const buyerSnap = await getDoc(doc(db, "users", user.uid));
-    const buyerWallet = buyerSnap.data()?.wallet || 0;
-    if (buyerWallet < service.price) {
-      alert("Insufficient funds! Add money to your wallet.");
-      return;
-    }
-    let extraInfo = {};
-    if (service.category === "Airtime" || service.category === "Data") {
-      const phoneNumber = prompt("📱 Enter your phone number:");
-      if (!phoneNumber) return;
-      extraInfo.phoneNumber = phoneNumber;
-    }
-    if (service.category === "Bills") {
-      const accountNumber = prompt("⚡ Enter your meter/smartcard number:");
-      if (!accountNumber) return;
-      extraInfo.accountNumber = accountNumber;
-    }
-    if (service.category === "Crypto") {
-      const walletAddress = prompt("💰 Enter your crypto wallet address:");
-      if (!walletAddress) return;
-      extraInfo.walletAddress = walletAddress;
-    }
-    await updateDoc(doc(db, "users", user.uid), { wallet: buyerWallet - service.price });
-    await addDoc(collection(db, "orders"), {
-      serviceId: service.id,
-      title: service.title,
-      price: service.price,
-      category: service.category,
-      buyerId: user.uid,
-      sellerId: service.sellerId,
-      type: "service",
-      status: "pending",
-      createdAt: serverTimestamp(),
-      ...extraInfo
-    });
-    alert("✅ Order placed!");
-    window.location.reload();
-  } catch (err) {
-    alert("Error: " + err.message);
-  }
-};
-
-const handleBuyTicket = async (ticket, user) => {
-  try {
-    const buyerSnap = await getDoc(doc(db, "users", user.uid));
-    const buyerWallet = buyerSnap.data()?.wallet || 0;
-    if (buyerWallet < ticket.price) {
-      alert("Insufficient funds! Add money to your wallet.");
-      return;
-    }
-    await updateDoc(doc(db, "users", user.uid), { wallet: buyerWallet - ticket.price });
-    await addDoc(collection(db, "orders"), {
-      ticketId: ticket.id,
-      title: ticket.title,
-      price: ticket.price,
-      buyerId: user.uid,
-      sellerId: ticket.sellerId,
-      type: "ticket",
-      ticketType: ticket.ticketType,
-      status: "pending",
-      createdAt: serverTimestamp()
-    });
-    alert("✅ Ticket purchased!");
+    alert("✅ Order placed successfully!");
     window.location.reload();
   } catch (err) {
     alert("Error: " + err.message);
@@ -149,6 +95,8 @@ const App = () => {
   const [section, setSection] = useState("products");
   const [page, setPage] = useState("browse");
   const [editingItem, setEditingItem] = useState(null);
+  const [buyingService, setBuyingService] = useState(null);
+  const [buyingCrypto, setBuyingCrypto] = useState(null);
   
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -187,7 +135,7 @@ const App = () => {
       )}
       {section === "services" && (
         <>
-          {page === "browse" && <ServicesBrowse user={user} isAdmin={isAdmin} setPage={setPage} setEditingItem={setEditingItem} />}
+          {page === "browse" && <ServicesBrowse user={user} isAdmin={isAdmin} setPage={setPage} setEditingItem={setEditingItem} setBuyingService={setBuyingService} />}
           {page === "add-service" && isAdmin && <AddService user={user} setPage={setPage} editingItem={editingItem} setEditingItem={setEditingItem} />}
         </>
       )}
@@ -197,10 +145,12 @@ const App = () => {
           {page === "add-ticket" && isAdmin && <AddTicket user={user} setPage={setPage} editingItem={editingItem} setEditingItem={setEditingItem} />}
         </>
       )}
+      {page === "crypto" && <CryptoExchange user={user} buyingCrypto={buyingCrypto} setBuyingCrypto={setBuyingCrypto} setPage={setPage} />}
       {page === "profile" && <ProfilePage user={user} />}
       {page === "orders" && <OrdersPage user={user} isAdmin={isAdmin} />}
       {page === "transfer" && <MoneyTransfer user={user} />}
       {page === "settings" && <SettingsPage user={user} setPage={setPage} />}
+      {buyingService && <BuyServiceModal service={buyingService} user={user} onClose={() => setBuyingService(null)} />}
       <NavBar page={page} setPage={setPage} section={section} />
     </div>
   );
@@ -310,6 +260,9 @@ const Header = ({ user, section, setSection, setPage, isAdmin }) => {
               {s}
             </button>
           ))}
+          <button onClick={() => setPage("crypto")} style={{padding:"8px 16px",background:section==="crypto"?"linear-gradient(135deg, #FBC02D 0%, #F57F17 100%)":"#f8f9fa",color:section==="crypto"?"white":"#666",border:"none",borderRadius:"16px",fontSize:"13px",fontWeight:"800",cursor:"pointer",boxShadow:section==="crypto"?"0 3px 8px rgba(251,192,45,0.3)":"none",whiteSpace:"nowrap"}}>
+            💰 Crypto
+          </button>
         </div>
       </div>
       {showAddMoney && <AddMoneyModal user={user} onClose={() => setShowAddMoney(false)} />}
@@ -394,6 +347,122 @@ const AddMoneyModal = ({ user, onClose }) => {
     </div>
   );
 };
+
+const BuyServiceModal = ({ service, user, onClose }) => {
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [detectedNetwork, setDetectedNetwork] = useState(null);
+  const [loading, setLoading] = useState(false);
+  
+  useEffect(() => {
+    if (phoneNumber && (service.category === "Airtime" || service.category === "Data")) {
+      const network = detectNetwork(phoneNumber);
+      setDetectedNetwork(network);
+    }
+  }, [phoneNumber, service.category]);
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (service.category === "Airtime" || service.category === "Data") {
+      if (!phoneNumber.trim()) {
+        alert("Please enter phone number");
+        return;
+      }
+      if (!detectedNetwork) {
+        alert("Invalid phone number! Cannot detect network.");
+        return;
+      }
+    }
+    if (service.category === "Bills" && !accountNumber.trim()) {
+      alert("Please enter meter/smartcard number");
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const buyerSnap = await getDoc(doc(db, "users", user.uid));
+      const buyerWallet = buyerSnap.data()?.wallet || 0;
+      if (buyerWallet < service.price) {
+        alert("Insufficient funds! Add money to your wallet.");
+        setLoading(false);
+        return;
+      }
+      
+      await updateDoc(doc(db, "users", user.uid), { wallet: buyerWallet - service.price });
+      
+      const orderData = {
+        serviceId: service.id,
+        title: service.title,
+        price: service.price,
+        category: service.category,
+        buyerId: user.uid,
+        sellerId: service.sellerId,
+        type: "service",
+        status: "pending",
+        createdAt: serverTimestamp()
+      };
+      
+      if (phoneNumber) {
+        orderData.phoneNumber = phoneNumber.trim();
+        orderData.network = detectedNetwork;
+      }
+      if (accountNumber) orderData.accountNumber = accountNumber.trim();
+      
+      await addDoc(collection(db, "orders"), orderData);
+      alert("✅ Order placed successfully!");
+      onClose();
+      window.location.reload();
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+    setLoading(false);
+  };
+  
+  return (
+    <div onClick={onClose} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"16px",backdropFilter:"blur(5px)"}}>
+      <div onClick={(e) => e.stopPropagation()} style={{background:"white",borderRadius:"16px",padding:"24px",maxWidth:"440px",width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"20px"}}>
+          <h2 style={{fontSize:"18px",fontWeight:"900",color:"#2C3E50"}}>Buy {service.title}</h2>
+          <button onClick={onClose} style={{width:"32px",height:"32px",borderRadius:"50%",background:"#f5f5f5",border:"none",cursor:"pointer",fontSize:"16px",fontWeight:"700",color:"#666"}}>×</button>
+        </div>
+        
+        <div style={{padding:"16px",background:"linear-gradient(135deg, #FFF5F2 0%, #FFE5DC 100%)",borderRadius:"10px",marginBottom:"20px",border:"2px solid #FF6B35"}}>
+          <p style={{fontSize:"12px",fontWeight:"700",color:"#FF6B35",marginBottom:"4px"}}>PRICE</p>
+          <p style={{fontSize:"24px",fontWeight:"900",color:"#FF6B35"}}>₦{service.price?.toLocaleString()}</p>
+        </div>
+        
+        <form onSubmit={handleSubmit}>
+          {(service.category === "Airtime" || service.category === "Data") && (
+            <div style={{marginBottom:"16px"}}>
+              <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Phone Number</label>
+              <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="0803 123 4567" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
+              {detectedNetwork && (
+                <p style={{marginTop:"6px",fontSize:"13px",fontWeight:"700",color:"#4CAF50"}}>✓ Network: {detectedNetwork}</p>
+              )}
+              {phoneNumber && !detectedNetwork && phoneNumber.length >= 4 && (
+                <p style={{marginTop:"6px",fontSize:"13px",fontWeight:"700",color:"#d32f2f"}}>❌ Invalid phone number</p>
+              )}
+            </div>
+          )}
+          
+          {service.category === "Bills" && (
+            <div style={{marginBottom:"16px"}}>
+              <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Meter/Smartcard Number</label>
+              <input type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="1234567890" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
+            </div>
+          )}
+          
+          <div style={{display:"flex",gap:"8px"}}>
+            <button type="button" onClick={onClose} style={{flex:1,padding:"12px",background:"#f5f5f5",color:"#666",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:"pointer"}}>Cancel</button>
+            <button type="submit" disabled={loading} style={{flex:1,padding:"12px",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",borderRadius:"8px",fontSize:"14px",fontWeight:"800",cursor:loading?"not-allowed":"pointer",boxShadow:"0 4px 10px rgba(76,175,80,0.4)"}}>
+              {loading ? "PROCESSING..." : "CONFIRM PURCHASE"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 const ProductsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
   const [products, setProducts] = useState([]);
   const [category, setCategory] = useState("All");
@@ -416,7 +485,7 @@ const ProductsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
   };
   
   const handleDelete = async (productId) => {
-    if (!window.confirm("Delete this product?")) return;
+    if (!window.confirm("Delete this product? This cannot be undone!")) return;
     try {
       await deleteDoc(doc(db, "products", productId));
       alert("✅ Product deleted!");
@@ -430,7 +499,7 @@ const ProductsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
       {isAdmin && (
         <button onClick={() => {setEditingItem(null); setPage("add-product");}} style={{position:"fixed",bottom:"90px",right:"20px",width:"56px",height:"56px",borderRadius:"50%",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",fontSize:"28px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(255,107,53,0.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
       )}
-      <input type="text" placeholder="🔍 Search..." value={search} onChange={(e) => setSearch(e.target.value)} style={{width:"100%",padding:"12px 16px",marginBottom:"14px",border:"2px solid #f0f0f0",borderRadius:"10px",fontSize:"14px",fontWeight:"500",outline:"none"}} />
+      <input type="text" placeholder="🔍 Search products..." value={search} onChange={(e) => setSearch(e.target.value)} style={{width:"100%",padding:"12px 16px",marginBottom:"14px",border:"2px solid #f0f0f0",borderRadius:"10px",fontSize:"14px",fontWeight:"500",outline:"none"}} />
       <div style={{display:"flex",gap:"6px",marginBottom:"16px",overflowX:"auto",paddingBottom:"6px"}}>
         {PRODUCT_CATEGORIES.map(cat => (
           <button key={cat} onClick={() => setCategory(cat)} style={{padding:"6px 14px",background:category===cat?"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)":"white",color:category===cat?"white":"#666",border:category===cat?"none":"2px solid #f0f0f0",borderRadius:"16px",fontSize:"12px",fontWeight:"800",cursor:"pointer",whiteSpace:"nowrap",boxShadow:category===cat?"0 3px 8px rgba(255,107,53,0.3)":"none"}}>
@@ -506,7 +575,7 @@ const ProductDetail = ({ product, user, onBack }) => {
             </div>
           )}
           {product.sellerId !== user.uid && (
-            <button onClick={() => { if (window.confirm(`Buy ${product.title} for ₦${product.price?.toLocaleString()}?`)) { handleBuyProduct(product, user); }}} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"10px",fontSize:"15px",fontWeight:"900",cursor:"pointer",boxShadow:"0 4px 12px rgba(255,107,53,0.4)"}}>
+            <button onClick={() => handleBuyProduct(product, user)} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"10px",fontSize:"15px",fontWeight:"900",cursor:"pointer",boxShadow:"0 4px 12px rgba(255,107,53,0.4)"}}>
               BUY NOW - ₦{product.price?.toLocaleString()}
             </button>
           )}
@@ -589,7 +658,7 @@ const AddProduct = ({ user, setPage, editingItem, setEditingItem }) => {
         </div>
         <div style={{marginBottom:"16px"}}>
           <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Description</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe..." rows="4" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",resize:"vertical",outline:"none",fontFamily:"inherit"}} />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your product..." rows="4" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",resize:"vertical",outline:"none",fontFamily:"inherit"}} />
         </div>
         <div style={{marginBottom:"16px"}}>
           <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Image</label>
@@ -609,15 +678,20 @@ const AddProduct = ({ user, setPage, editingItem, setEditingItem }) => {
   );
 };
 
-const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
+const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem, setBuyingService }) => {
   const [services, setServices] = useState([]);
   const [category, setCategory] = useState("All");
+  const [search, setSearch] = useState("");
   useEffect(() => {
     const q = query(collection(db, "services"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(q, (snap) => { setServices(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
     return () => unsub();
   }, []);
-  const filtered = services.filter(s => category === "All" || s.category === category);
+  const filtered = services.filter(s => {
+    if (category !== "All" && s.category !== category) return false;
+    if (search && !s.title.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
   
   const handleEdit = (service) => {
     setEditingItem(service);
@@ -625,7 +699,7 @@ const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
   };
   
   const handleDelete = async (serviceId) => {
-    if (!window.confirm("Delete this service?")) return;
+    if (!window.confirm("Delete this service? This cannot be undone!")) return;
     try {
       await deleteDoc(doc(db, "services", serviceId));
       alert("✅ Service deleted!");
@@ -637,6 +711,7 @@ const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
       {isAdmin && (
         <button onClick={() => {setEditingItem(null); setPage("add-service");}} style={{position:"fixed",bottom:"90px",right:"20px",width:"56px",height:"56px",borderRadius:"50%",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",color:"white",border:"none",fontSize:"28px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(76,175,80,0.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
       )}
+      <input type="text" placeholder="🔍 Search services..." value={search} onChange={(e) => setSearch(e.target.value)} style={{width:"100%",padding:"12px 16px",marginBottom:"14px",border:"2px solid #f0f0f0",borderRadius:"10px",fontSize:"14px",fontWeight:"500",outline:"none"}} />
       <div style={{display:"flex",gap:"6px",marginBottom:"16px",overflowX:"auto",paddingBottom:"6px"}}>
         {SERVICE_CATEGORIES.map(cat => (
           <button key={cat} onClick={() => setCategory(cat)} style={{padding:"6px 14px",background:category===cat?"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)":"white",color:category===cat?"white":"#666",border:category===cat?"none":"2px solid #f0f0f0",borderRadius:"16px",fontSize:"12px",fontWeight:"800",cursor:"pointer",whiteSpace:"nowrap",boxShadow:category===cat?"0 3px 8px rgba(76,175,80,0.3)":"none"}}>
@@ -659,9 +734,7 @@ const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
                   if (service.sellerId === user.uid) {
                     alert("This is your own service!");
                   } else {
-                    if (window.confirm(`Buy ${service.title} for ₦${service.price?.toLocaleString()}?`)) {
-                      handleBuyService(service, user);
-                    }
+                    setBuyingService(service);
                   }
                 }} className="card-hover" style={{cursor:"pointer"}}>
                   {cardType && (
@@ -672,11 +745,6 @@ const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
                   <div style={{padding:"12px"}}>
                     <div style={{display:"inline-block",padding:"3px 8px",background:"linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%)",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#4CAF50",marginBottom:"6px",textTransform:"uppercase",border:"1px solid #4CAF50"}}>{service.category}</div>
                     <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50",lineHeight:"1.2"}}>{service.title}</h3>
-                    {service.category === "Crypto" && service.cryptoType && (
-                      <div style={{padding:"6px",background:"#FFF9C4",borderRadius:"6px",marginBottom:"6px"}}>
-                        <p style={{fontSize:"11px",fontWeight:"800",color:"#F57F17"}}>{service.cryptoType}</p>
-                      </div>
-                    )}
                     <p style={{fontSize:"18px",fontWeight:"900",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{service.price?.toLocaleString()}</p>
                   </div>
                 </div>
@@ -700,7 +768,7 @@ const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
 };
 const AddService = ({ user, setPage, editingItem, setEditingItem }) => {
   const [category, setCategory] = useState(editingItem?.category || "Airtime");
-  const [title, setTitle] = useState("");
+  const [jobTitle, setJobTitle] = useState(editingItem?.jobTitle || "");
   const [price, setPrice] = useState(editingItem?.price || "");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -710,26 +778,25 @@ const AddService = ({ user, setPage, editingItem, setEditingItem }) => {
   const [dataPlan, setDataPlan] = useState("1GB - ₦500");
   const [billType, setBillType] = useState("NEPA");
   const [cardType, setCardType] = useState(editingItem?.cardType || "iTunes");
-  const [cryptoType, setCryptoType] = useState(editingItem?.cryptoType || "Bitcoin");
-  const [cryptoAmount, setCryptoAmount] = useState("");
-  const [cryptoWallet, setCryptoWallet] = useState(editingItem?.cryptoWallet || "");
+  const [cardValue, setCardValue] = useState(editingItem?.cardValue || "");
   
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    let finalTitle = title;
+    let finalTitle = "";
     
     if (category === "Airtime") finalTitle = `${network} ₦${airtimeAmount} Airtime`;
-    if (category === "Data") finalTitle = `${dataNetwork} ${dataPlan.split(' - ')[0]} Data`;
-    if (category === "Bills") finalTitle = `${billType} Bill Payment`;
-    if (category === "Gift Cards") {
-      if (!title.trim()) { setError("Enter card details (e.g., $50, $100)"); return; }
-      finalTitle = `${cardType} ${title.trim()}`;
+    else if (category === "Data") finalTitle = `${dataNetwork} ${dataPlan.split(' - ')[0]} Data`;
+    else if (category === "Bills") finalTitle = `${billType} Bill Payment`;
+    else if (category === "Gift Cards") {
+      if (!cardValue.trim()) { setError("Enter card value (e.g., $50, $100)"); return; }
+      finalTitle = `${cardType} ${cardValue.trim()}`;
     }
-    if (category === "Crypto") {
-      if (!cryptoAmount.trim() || !cryptoWallet.trim()) { setError("Enter crypto amount and your wallet address"); return; }
-      finalTitle = `${cryptoAmount} ${cryptoType}`;
+    else if (category === "Skills") {
+      if (!jobTitle.trim()) { setError("Enter what job/service you offer"); return; }
+      finalTitle = jobTitle.trim();
     }
+    
     if (!finalTitle.trim() || !price) { setError("Fill all fields"); return; }
     
     setUploading(true);
@@ -742,11 +809,7 @@ const AddService = ({ user, setPage, editingItem, setEditingItem }) => {
         status: "active"
       };
       if (category === "Gift Cards") serviceData.cardType = cardType;
-      if (category === "Crypto") {
-        serviceData.cryptoType = cryptoType;
-        serviceData.cryptoWallet = cryptoWallet.trim();
-        serviceData.cryptoAmount = cryptoAmount.trim();
-      }
+      if (category === "Skills") serviceData.jobTitle = jobTitle.trim();
       
       if (editingItem) {
         await updateDoc(doc(db, "services", editingItem.id), serviceData);
@@ -827,32 +890,15 @@ const AddService = ({ user, setPage, editingItem, setEditingItem }) => {
             </div>
             <div style={{marginBottom:"16px"}}>
               <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Card Value</label>
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="$50" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
-            </div>
-          </>
-        )}
-        {category === "Crypto" && (
-          <>
-            <div style={{marginBottom:"16px"}}>
-              <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Crypto Type</label>
-              <select value={cryptoType} onChange={(e) => setCryptoType(e.target.value)} style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600"}}>
-                {CRYPTO_COINS.map(c => <option key={c.symbol} value={c.name}>{c.icon} {c.name}</option>)}
-              </select>
-            </div>
-            <div style={{marginBottom:"16px"}}>
-              <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Amount</label>
-              <input type="text" value={cryptoAmount} onChange={(e) => setCryptoAmount(e.target.value)} placeholder="0.005 BTC" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
-            </div>
-            <div style={{marginBottom:"16px"}}>
-              <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Your Wallet Address</label>
-              <input type="text" value={cryptoWallet} onChange={(e) => setCryptoWallet(e.target.value)} placeholder="bc1q..." style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
+              <input type="text" value={cardValue} onChange={(e) => setCardValue(e.target.value)} placeholder="$50" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
             </div>
           </>
         )}
         {category === "Skills" && (
           <div style={{marginBottom:"16px"}}>
-            <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Service Title</label>
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Logo Design" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
+            <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>What job/service do you offer?</label>
+            <input type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="e.g., Graphic Designer, Hairdresser, Plumber" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
+            <p style={{fontSize:"11px",color:"#999",marginTop:"4px",fontWeight:"600"}}>Examples: Web Developer, Photographer, Electrician</p>
           </div>
         )}
         <div style={{marginBottom:"16px"}}>
@@ -871,15 +917,136 @@ const AddService = ({ user, setPage, editingItem, setEditingItem }) => {
   );
 };
 
+const CryptoExchange = ({ user, buyingCrypto, setBuyingCrypto, setPage }) => {
+  const [action, setAction] = useState("buy");
+  const [selectedCoin, setSelectedCoin] = useState(CRYPTO_COINS[0]);
+  const [amount, setAmount] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
+  const [loading, setLoading] = useState(false);
+  
+  const nairaAmount = amount ? (action === "buy" ? parseFloat(amount) * selectedCoin.buyRate : parseFloat(amount) * selectedCoin.sellRate) : 0;
+  
+  const handleTransaction = async (e) => {
+    e.preventDefault();
+    if (!amount || !walletAddress.trim()) {
+      alert("Please fill all fields");
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const userSnap = await getDoc(doc(db, "users", user.uid));
+      const userWallet = userSnap.data()?.wallet || 0;
+      
+      if (action === "buy" && userWallet < nairaAmount) {
+        alert("Insufficient funds! Add money to your wallet.");
+        setLoading(false);
+        return;
+      }
+      
+      if (action === "buy") {
+        await updateDoc(doc(db, "users", user.uid), { wallet: userWallet - nairaAmount });
+      }
+      
+      await addDoc(collection(db, "orders"), {
+        title: `${action === "buy" ? "Buy" : "Sell"} ${amount} ${selectedCoin.symbol}`,
+        price: nairaAmount,
+        buyerId: user.uid,
+        sellerId: "Hnl2ncOnVtPWbnVTz3TcU2jJUXy1",
+        type: "crypto",
+        cryptoAction: action,
+        cryptoCoin: selectedCoin.name,
+        cryptoAmount: parseFloat(amount),
+        walletAddress: walletAddress.trim(),
+        status: "pending",
+        createdAt: serverTimestamp()
+      });
+      
+      alert(`✅ ${action === "buy" ? "Purchase" : "Sale"} request submitted!`);
+      setAmount("");
+      setWalletAddress("");
+      setPage("orders");
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+    setLoading(false);
+  };
+  
+  return (
+    <div style={{maxWidth:"600px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
+      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #FBC02D 0%, #F57F17 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Crypto Exchange</h2>
+      
+      <div style={{display:"flex",gap:"8px",marginBottom:"16px"}}>
+        <button onClick={() => setAction("buy")} style={{flex:1,padding:"12px",background:action==="buy"?"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)":"white",color:action==="buy"?"white":"#666",border:action==="buy"?"none":"2px solid #f0f0f0",borderRadius:"10px",fontSize:"14px",fontWeight:"800",cursor:"pointer"}}>
+          BUY CRYPTO
+        </button>
+        <button onClick={() => setAction("sell")} style={{flex:1,padding:"12px",background:action==="sell"?"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)":"white",color:action==="sell"?"white":"#666",border:action==="sell"?"none":"2px solid #f0f0f0",borderRadius:"10px",fontSize:"14px",fontWeight:"800",cursor:"pointer"}}>
+          SELL CRYPTO
+        </button>
+      </div>
+      
+      <form onSubmit={handleTransaction} style={{background:"white",padding:"20px",borderRadius:"14px",boxShadow:"0 4px 16px rgba(0,0,0,0.1)"}}>
+        <div style={{marginBottom:"16px"}}>
+          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"8px",color:"#2C3E50"}}>Select Cryptocurrency</label>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2, 1fr)",gap:"8px"}}>
+            {CRYPTO_COINS.map(coin => (
+              <div key={coin.symbol} onClick={() => setSelectedCoin(coin)} style={{padding:"12px",background:selectedCoin.symbol===coin.symbol?"linear-gradient(135deg, #FFF9C4 0%, #FFF59D 100%)":"#f8f9fa",border:selectedCoin.symbol===coin.symbol?"2px solid #FBC02D":"2px solid transparent",borderRadius:"10px",cursor:"pointer",textAlign:"center"}}>
+                <div style={{fontSize:"24px",marginBottom:"4px"}}>{coin.icon}</div>
+                <p style={{fontSize:"12px",fontWeight:"800",color:"#2C3E50"}}>{coin.name}</p>
+                <p style={{fontSize:"10px",fontWeight:"700",color:"#F57F17"}}>{coin.symbol}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        <div style={{padding:"14px",background:"linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)",borderRadius:"10px",marginBottom:"16px",border:"2px solid #2196F3"}}>
+          <p style={{fontSize:"11px",fontWeight:"700",color:"#1976D2",marginBottom:"6px"}}>RATE:</p>
+          <p style={{fontSize:"16px",fontWeight:"900",color:"#1976D2"}}>
+            1 {selectedCoin.symbol} = ₦{(action === "buy" ? selectedCoin.buyRate : selectedCoin.sellRate).toLocaleString()}
+          </p>
+          <p style={{fontSize:"10px",fontWeight:"600",color:"#1976D2",marginTop:"4px"}}>
+            {action === "buy" ? "BUY" : "SELL"} RATE
+          </p>
+        </div>
+        
+        <div style={{marginBottom:"16px"}}>
+          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Amount ({selectedCoin.symbol})</label>
+          <input type="number" step="0.00000001" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.005" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
+          {amount && (
+            <p style={{marginTop:"6px",fontSize:"13px",fontWeight:"700",color:"#2196F3"}}>= ₦{nairaAmount.toLocaleString()}</p>
+          )}
+        </div>
+        
+        <div style={{marginBottom:"16px"}}>
+          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>
+            {action === "buy" ? "Your Wallet Address" : "Your Wallet Address (to receive)"}
+          </label>
+          <input type="text" value={walletAddress} onChange={(e) => setWalletAddress(e.target.value)} placeholder="bc1q..." style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
+        </div>
+        
+        <button type="submit" disabled={loading} style={{width:"100%",padding:"14px",background:action==="buy"?"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)":"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",color:"white",border:"none",borderRadius:"10px",fontSize:"15px",fontWeight:"900",cursor:loading?"not-allowed":"pointer",boxShadow:"0 4px 12px rgba(251,192,45,0.4)"}}>
+          {loading ? "PROCESSING..." : (action === "buy" ? `BUY ${selectedCoin.symbol}` : `SELL ${selectedCoin.symbol}`)}
+        </button>
+      </form>
+    </div>
+  );
+};
+
 const TicketsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
   const [tickets, setTickets] = useState([]);
   const [ticketType, setTicketType] = useState("All");
+  const [search, setSearch] = useState("");
   useEffect(() => {
     const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(q, (snap) => { setTickets(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
     return () => unsub();
   }, []);
-  const filtered = tickets.filter(t => ticketType === "All" || t.ticketType === ticketType);
+  
+  const filtered = tickets.filter(t => {
+    if (ticketType !== "All" && t.ticketType !== ticketType) return false;
+    if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
   
   const handleEdit = (ticket) => {
     setEditingItem(ticket);
@@ -887,11 +1054,39 @@ const TicketsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
   };
   
   const handleDelete = async (ticketId) => {
-    if (!window.confirm("Delete this ticket?")) return;
+    if (!window.confirm("Delete this ticket? This cannot be undone!")) return;
     try {
       await deleteDoc(doc(db, "tickets", ticketId));
       alert("✅ Ticket deleted!");
     } catch (err) { alert("Error: " + err.message); }
+  };
+  
+  const handleBuyTicket = async (ticket) => {
+    try {
+      const buyerSnap = await getDoc(doc(db, "users", user.uid));
+      const buyerWallet = buyerSnap.data()?.wallet || 0;
+      if (buyerWallet < ticket.price) {
+        alert("Insufficient funds! Add money to your wallet.");
+        return;
+      }
+      if (!window.confirm(`Confirm purchase of ${ticket.title} for ₦${ticket.price?.toLocaleString()}?`)) return;
+      await updateDoc(doc(db, "users", user.uid), { wallet: buyerWallet - ticket.price });
+      await addDoc(collection(db, "orders"), {
+        ticketId: ticket.id,
+        title: ticket.title,
+        price: ticket.price,
+        buyerId: user.uid,
+        sellerId: ticket.sellerId,
+        type: "ticket",
+        ticketType: ticket.ticketType,
+        status: "pending",
+        createdAt: serverTimestamp()
+      });
+      alert("✅ Ticket purchased successfully!");
+      window.location.reload();
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
   };
   
   return (
@@ -899,6 +1094,7 @@ const TicketsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
       {isAdmin && (
         <button onClick={() => {setEditingItem(null); setPage("add-ticket");}} style={{position:"fixed",bottom:"90px",right:"20px",width:"56px",height:"56px",borderRadius:"50%",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",color:"white",border:"none",fontSize:"28px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(156,39,176,0.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
       )}
+      <input type="text" placeholder="🔍 Search tickets..." value={search} onChange={(e) => setSearch(e.target.value)} style={{width:"100%",padding:"12px 16px",marginBottom:"14px",border:"2px solid #f0f0f0",borderRadius:"10px",fontSize:"14px",fontWeight:"500",outline:"none"}} />
       <div style={{display:"flex",gap:"6px",marginBottom:"16px",overflowX:"auto",paddingBottom:"6px"}}>
         {["All","Event","Flight"].map(type => (
           <button key={type} onClick={() => setTicketType(type)} style={{padding:"6px 14px",background:ticketType===type?"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)":"white",color:ticketType===type?"white":"#666",border:ticketType===type?"none":"2px solid #f0f0f0",borderRadius:"16px",fontSize:"12px",fontWeight:"800",cursor:"pointer",whiteSpace:"nowrap",boxShadow:ticketType===type?"0 3px 8px rgba(156,39,176,0.3)":"none"}}>
@@ -919,9 +1115,7 @@ const TicketsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
                 if (t.sellerId === user.uid) {
                   alert("This is your own ticket!");
                 } else {
-                  if (window.confirm(`Buy ${t.title} for ₦${t.price?.toLocaleString()}?`)) {
-                    handleBuyTicket(t, user);
-                  }
+                  handleBuyTicket(t);
                 }
               }} className="card-hover" style={{cursor:"pointer"}}>
                 {t.imageUrl ? (
@@ -957,7 +1151,6 @@ const TicketsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
     </div>
   );
 };
-
 const AddTicket = ({ user, setPage, editingItem, setEditingItem }) => {
   const [ticketType, setTicketType] = useState(editingItem?.ticketType || "Event");
   const [title, setTitle] = useState(editingItem?.title || "");
@@ -1115,7 +1308,7 @@ const OrdersPage = ({ user, isAdmin }) => {
   };
   
   const deleteOrder = async (orderId) => {
-    if (!window.confirm("Delete this order?")) return;
+    if (!window.confirm("Delete this order? This cannot be undone!")) return;
     try {
       await deleteDoc(doc(db, "orders", orderId));
       alert("✅ Order deleted!");
@@ -1159,6 +1352,7 @@ const OrdersPage = ({ user, isAdmin }) => {
               {order.phoneNumber && (
                 <div style={{padding:"10px",background:"linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)",borderRadius:"8px",marginBottom:"10px"}}>
                   <p style={{fontSize:"12px",color:"#1976D2",fontWeight:"700"}}>📱 {order.phoneNumber}</p>
+                  {order.network && <p style={{fontSize:"11px",color:"#1976D2",fontWeight:"600"}}>Network: {order.network}</p>}
                 </div>
               )}
               {order.accountNumber && (
@@ -1169,6 +1363,7 @@ const OrdersPage = ({ user, isAdmin }) => {
               {order.walletAddress && (
                 <div style={{padding:"10px",background:"linear-gradient(135deg, #FFF9C4 0%, #FFF59D 100%)",borderRadius:"8px",marginBottom:"10px"}}>
                   <p style={{fontSize:"12px",color:"#F57F17",fontWeight:"700"}}>💰 {order.walletAddress}</p>
+                  {order.cryptoAction && <p style={{fontSize:"11px",color:"#F57F17",fontWeight:"600"}}>Action: {order.cryptoAction.toUpperCase()}</p>}
                 </div>
               )}
               <div style={{display:"flex",gap:"8px"}}>
@@ -1190,8 +1385,10 @@ const OrdersPage = ({ user, isAdmin }) => {
     </div>
   );
 };
+
 const MoneyTransfer = ({ user }) => {
-  const [country, setCountry] = useState(COUNTRIES[0]);
+  const [fromCountry, setFromCountry] = useState(COUNTRIES[0]);
+  const [toCountry, setToCountry] = useState(COUNTRIES[1]);
   const [amount, setAmount] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [recipientBank, setRecipientBank] = useState("");
@@ -1199,8 +1396,8 @@ const MoneyTransfer = ({ user }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   
-  const nairaAmount = amount ? parseFloat(amount) : 0;
-  const foreignAmount = country.code === "NG" ? nairaAmount : nairaAmount > 0 ? (nairaAmount / country.rate).toFixed(2) : "0.00";
+  const sendAmount = amount ? parseFloat(amount) : 0;
+  const receiveAmount = sendAmount > 0 ? (sendAmount / fromCountry.rate * toCountry.rate).toFixed(2) : "0.00";
   
   const handleTransfer = async (e) => {
     e.preventDefault();
@@ -1209,28 +1406,34 @@ const MoneyTransfer = ({ user }) => {
       setError("Fill all fields");
       return;
     }
+    
     const userSnap = await getDoc(doc(db, "users", user.uid));
     const userWallet = userSnap.data()?.wallet || 0;
-    if (userWallet < nairaAmount) {
+    const nairaDeduction = fromCountry.code === "NG" ? sendAmount : sendAmount * fromCountry.rate;
+    
+    if (userWallet < nairaDeduction) {
       setError("Insufficient funds!");
       return;
     }
+    
     setLoading(true);
     try {
-      await updateDoc(doc(db, "users", user.uid), { wallet: userWallet - nairaAmount });
+      await updateDoc(doc(db, "users", user.uid), { wallet: userWallet - nairaDeduction });
       await addDoc(collection(db, "transfers"), {
         userId: user.uid,
-        country: country.name,
-        currency: country.currency,
-        nairaAmount,
-        foreignAmount: country.code === "NG" ? nairaAmount : parseFloat(foreignAmount),
+        fromCountry: fromCountry.name,
+        toCountry: toCountry.name,
+        sendAmount,
+        sendCurrency: fromCountry.currency,
+        receiveAmount: parseFloat(receiveAmount),
+        receiveCurrency: toCountry.currency,
         recipientName: recipientName.trim(),
         recipientBank,
         recipientAccount: recipientAccount.trim(),
         status: "processing",
         createdAt: serverTimestamp()
       });
-      alert(`✅ Transfer of ${country.symbol}${country.code === "NG" ? nairaAmount.toLocaleString() : foreignAmount} is processing!`);
+      alert(`✅ Transfer of ${fromCountry.symbol}${sendAmount} → ${toCountry.symbol}${receiveAmount} is processing!`);
       setAmount("");
       setRecipientName("");
       setRecipientBank("");
@@ -1243,48 +1446,63 @@ const MoneyTransfer = ({ user }) => {
   
   return (
     <div style={{maxWidth:"550px",margin:"0 auto",padding:"16px",paddingBottom:"90px",animation:"fadeIn 0.5s ease"}}>
-      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #2196F3 0%, #1976D2 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Send Money</h2>
+      <h2 style={{fontSize:"20px",fontWeight:"900",marginBottom:"16px",background:"linear-gradient(135deg, #2196F3 0%, #1976D2 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Send Money Internationally</h2>
       <form onSubmit={handleTransfer} style={{background:"white",padding:"20px",borderRadius:"14px",boxShadow:"0 4px 16px rgba(0,0,0,0.1)"}}>
         <div style={{marginBottom:"16px"}}>
-          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"8px",color:"#2C3E50"}}>Select Country</label>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(2, 1fr)",gap:"8px",maxHeight:"300px",overflowY:"auto"}}>
+          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"8px",color:"#2C3E50"}}>From (You're sending from)</label>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:"8px",maxHeight:"200px",overflowY:"auto"}}>
             {COUNTRIES.map(c => (
-              <div key={c.code} onClick={() => {setCountry(c); setRecipientBank("");}} style={{padding:"10px",background:country.code===c.code?"linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)":"#f8f9fa",border:country.code===c.code?"2px solid #2196F3":"2px solid transparent",borderRadius:"8px",cursor:"pointer",textAlign:"center",transition:"all 0.3s"}}>
-                <div style={{fontSize:"20px",marginBottom:"3px"}}>{c.flag}</div>
-                <p style={{fontSize:"11px",fontWeight:"800",color:"#2C3E50"}}>{c.name}</p>
-                <p style={{fontSize:"10px",fontWeight:"700",color:"#2196F3"}}>{c.currency}</p>
+              <div key={c.code} onClick={() => {setFromCountry(c);}} style={{padding:"8px",background:fromCountry.code===c.code?"linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)":"#f8f9fa",border:fromCountry.code===c.code?"2px solid #2196F3":"2px solid transparent",borderRadius:"8px",cursor:"pointer",textAlign:"center",transition:"all 0.3s"}}>
+                <div style={{fontSize:"18px",marginBottom:"2px"}}>{c.flag}</div>
+                <p style={{fontSize:"10px",fontWeight:"800",color:"#2C3E50"}}>{c.code}</p>
               </div>
             ))}
           </div>
         </div>
-        {country.code !== "NG" && (
-          <div style={{padding:"12px",background:"linear-gradient(135deg, #FFF9C4 0%, #FFF59D 100%)",borderRadius:"10px",marginBottom:"16px",border:"2px solid #FBC02D"}}>
-            <p style={{fontSize:"11px",fontWeight:"700",color:"#F57F17",marginBottom:"4px"}}>Rate:</p>
-            <p style={{fontSize:"16px",fontWeight:"900",color:"#F57F17"}}>₦1 = {country.symbol}{(1/country.rate).toFixed(4)}</p>
-          </div>
-        )}
+        
         <div style={{marginBottom:"16px"}}>
-          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Amount (₦)</label>
-          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="10000" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
-          {nairaAmount > 0 && country.code !== "NG" && (
-            <p style={{marginTop:"6px",fontSize:"13px",fontWeight:"700",color:"#2196F3"}}>= {country.symbol}{foreignAmount} {country.currency}</p>
+          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"8px",color:"#2C3E50"}}>To (Recipient's country)</label>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:"8px",maxHeight:"200px",overflowY:"auto"}}>
+            {COUNTRIES.map(c => (
+              <div key={c.code} onClick={() => {setToCountry(c); setRecipientBank("");}} style={{padding:"8px",background:toCountry.code===c.code?"linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%)":"#f8f9fa",border:toCountry.code===c.code?"2px solid #4CAF50":"2px solid transparent",borderRadius:"8px",cursor:"pointer",textAlign:"center",transition:"all 0.3s"}}>
+                <div style={{fontSize:"18px",marginBottom:"2px"}}>{c.flag}</div>
+                <p style={{fontSize:"10px",fontWeight:"800",color:"#2C3E50"}}>{c.code}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        <div style={{padding:"12px",background:"linear-gradient(135deg, #FFF9C4 0%, #FFF59D 100%)",borderRadius:"10px",marginBottom:"16px",border:"2px solid #FBC02D"}}>
+          <p style={{fontSize:"11px",fontWeight:"700",color:"#F57F17",marginBottom:"4px"}}>Exchange Rate:</p>
+          <p style={{fontSize:"14px",fontWeight:"900",color:"#F57F17"}}>1 {fromCountry.currency} = {(toCountry.rate / fromCountry.rate).toFixed(4)} {toCountry.currency}</p>
+        </div>
+        
+        <div style={{marginBottom:"16px"}}>
+          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>You Send ({fromCountry.currency})</label>
+          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1000" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
+          {sendAmount > 0 && (
+            <p style={{marginTop:"6px",fontSize:"13px",fontWeight:"700",color:"#2196F3"}}>Recipient Gets: {toCountry.symbol}{receiveAmount} {toCountry.currency}</p>
           )}
         </div>
+        
         <div style={{marginBottom:"16px"}}>
           <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Recipient Name</label>
           <input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="John Doe" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
         </div>
+        
         <div style={{marginBottom:"16px"}}>
-          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Recipient Bank</label>
+          <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Recipient Bank ({toCountry.name})</label>
           <select value={recipientBank} onChange={(e) => setRecipientBank(e.target.value)} style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600"}}>
             <option value="">Select Bank</option>
-            {country.banks.map(bank => <option key={bank} value={bank}>{bank}</option>)}
+            {toCountry.banks.map(bank => <option key={bank} value={bank}>{bank}</option>)}
           </select>
         </div>
+        
         <div style={{marginBottom:"16px"}}>
           <label style={{display:"block",fontSize:"13px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50"}}>Account Number</label>
           <input type="text" value={recipientAccount} onChange={(e) => setRecipientAccount(e.target.value)} placeholder="1234567890" style={{width:"100%",padding:"12px",border:"2px solid #f0f0f0",borderRadius:"8px",fontSize:"14px",fontWeight:"600",outline:"none"}} />
         </div>
+        
         {error && <div style={{color:"#d32f2f",marginBottom:"16px",fontSize:"12px",fontWeight:"700",padding:"10px",background:"#ffebee",borderRadius:"8px"}}>{error}</div>}
         <button type="submit" disabled={loading} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg, #2196F3 0%, #1976D2 100%)",color:"white",border:"none",borderRadius:"10px",fontSize:"15px",fontWeight:"900",cursor:loading?"not-allowed":"pointer",boxShadow:"0 4px 12px rgba(33,150,243,0.4)"}}>
           {loading ? "SENDING..." : "SEND MONEY"}

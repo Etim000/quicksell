@@ -77,7 +77,7 @@ const handleBuyProduct = async (product, user) => {
       title: product.title,
       price: product.price,
       buyerId: user.uid,
-      sellerId: product.sellerId,
+      sellerId: product.sellerId || ADMIN_UID,
       type: "product",
       status: "pending",
       createdAt: serverTimestamp()
@@ -396,7 +396,7 @@ const BuyServiceModal = ({ service, user, onClose }) => {
         price: service.price,
         category: service.category,
         buyerId: user.uid,
-        sellerId: service.sellerId,
+        sellerId: service.sellerId || ADMIN_UID,
         type: "service",
         status: "pending",
         createdAt: serverTimestamp()
@@ -463,6 +463,7 @@ const BuyServiceModal = ({ service, user, onClose }) => {
     </div>
   );
 };
+
 const ProductsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
   const [products, setProducts] = useState([]);
   const [category, setCategory] = useState("All");
@@ -484,8 +485,8 @@ const ProductsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
     setPage("add-product");
   };
   
-  const handleDelete = async (productId) => {
-    if (!window.confirm("Delete this product? This cannot be undone!")) return;
+  const handleDelete = async (productId, isOwn) => {
+    if (!window.confirm(isOwn ? "Delete this product?" : "⚠️ FORCE DELETE this product? This cannot be undone!")) return;
     try {
       await deleteDoc(doc(db, "products", productId));
       alert("✅ Product deleted!");
@@ -514,34 +515,39 @@ const ProductsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
         </div>
       ) : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(240px, 1fr))",gap:"14px"}}>
-          {filtered.map(product => (
-            <div key={product.id} style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",position:"relative"}}>
-              <div onClick={() => setSelectedProduct(product)} className="card-hover" style={{cursor:"pointer"}}>
-                {product.imageUrl ? (
-                  <img src={product.imageUrl} alt={product.title} style={{width:"100%",height:"160px",objectFit:"cover"}} />
-                ) : (
-                  <div style={{width:"100%",height:"160px",background:"linear-gradient(135deg, #FFF5F2 0%, #FFE5DC 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <svg width="50" height="50" fill="#FF6B35" viewBox="0 0 24 24" opacity="0.3"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
+          {filtered.map(product => {
+            const isOwn = product.sellerId === user.uid;
+            return (
+              <div key={product.id} style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",position:"relative"}}>
+                <div onClick={() => setSelectedProduct(product)} className="card-hover" style={{cursor:"pointer"}}>
+                  {product.imageUrl ? (
+                    <img src={product.imageUrl} alt={product.title} style={{width:"100%",height:"160px",objectFit:"cover"}} />
+                  ) : (
+                    <div style={{width:"100%",height:"160px",background:"linear-gradient(135deg, #FFF5F2 0%, #FFE5DC 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <svg width="50" height="50" fill="#FF6B35" viewBox="0 0 24 24" opacity="0.3"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
+                    </div>
+                  )}
+                  <div style={{padding:"12px"}}>
+                    <div style={{display:"inline-block",padding:"3px 8px",background:"#FFF5F2",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#FF6B35",marginBottom:"6px",textTransform:"uppercase"}}>{product.category}</div>
+                    <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"8px",color:"#2C3E50",lineHeight:"1.2"}}>{product.title}</h3>
+                    <p style={{fontSize:"18px",fontWeight:"900",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{product.price?.toLocaleString()}</p>
+                  </div>
+                </div>
+                {isAdmin && (
+                  <div style={{position:"absolute",top:"8px",right:"8px",display:"flex",gap:"6px"}}>
+                    {isOwn && (
+                      <button onClick={() => handleEdit(product)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(33,150,243,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                        <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(product.id, isOwn)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(244,67,54,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                      <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    </button>
                   </div>
                 )}
-                <div style={{padding:"12px"}}>
-                  <div style={{display:"inline-block",padding:"3px 8px",background:"#FFF5F2",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#FF6B35",marginBottom:"6px",textTransform:"uppercase"}}>{product.category}</div>
-                  <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"8px",color:"#2C3E50",lineHeight:"1.2"}}>{product.title}</h3>
-                  <p style={{fontSize:"18px",fontWeight:"900",background:"linear-gradient(135deg, #FF6B35 0%, #E85D2C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{product.price?.toLocaleString()}</p>
-                </div>
               </div>
-              {isAdmin && product.sellerId === user.uid && (
-                <div style={{position:"absolute",top:"8px",right:"8px",display:"flex",gap:"6px"}}>
-                  <button onClick={() => handleEdit(product)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(33,150,243,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
-                    <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                  </button>
-                  <button onClick={() => handleDelete(product.id)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(244,67,54,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
-                    <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -552,7 +558,8 @@ const ProductDetail = ({ product, user, onBack }) => {
   const [seller, setSeller] = useState(null);
   useEffect(() => {
     const load = async () => {
-      const snap = await getDoc(doc(db, "users", product.sellerId));
+      const sellerId = product.sellerId || ADMIN_UID;
+      const snap = await getDoc(doc(db, "users", sellerId));
       if (snap.exists()) setSeller(snap.data());
     };
     load();
@@ -584,7 +591,6 @@ const ProductDetail = ({ product, user, onBack }) => {
     </div>
   );
 };
-
 const AddProduct = ({ user, setPage, editingItem, setEditingItem }) => {
   const [title, setTitle] = useState(editingItem?.title || "");
   const [description, setDescription] = useState(editingItem?.description || "");
@@ -698,8 +704,8 @@ const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem, setBuyingServi
     setPage("add-service");
   };
   
-  const handleDelete = async (serviceId) => {
-    if (!window.confirm("Delete this service? This cannot be undone!")) return;
+  const handleDelete = async (serviceId, isOwn) => {
+    if (!window.confirm(isOwn ? "Delete this service?" : "⚠️ FORCE DELETE this service? This cannot be undone!")) return;
     try {
       await deleteDoc(doc(db, "services", serviceId));
       alert("✅ Service deleted!");
@@ -728,6 +734,7 @@ const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem, setBuyingServi
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))",gap:"14px"}}>
           {filtered.map(service => {
             const cardType = service.category === "Gift Cards" && service.cardType ? GIFT_CARD_TYPES.find(c => c.name === service.cardType) : null;
+            const isOwn = service.sellerId === user.uid;
             return (
               <div key={service.id} style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",position:"relative"}}>
                 <div onClick={() => {
@@ -748,12 +755,14 @@ const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem, setBuyingServi
                     <p style={{fontSize:"18px",fontWeight:"900",background:"linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{service.price?.toLocaleString()}</p>
                   </div>
                 </div>
-                {isAdmin && service.sellerId === user.uid && (
+                {isAdmin && (
                   <div style={{position:"absolute",top:"8px",right:"8px",display:"flex",gap:"6px"}}>
-                    <button onClick={() => handleEdit(service)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(33,150,243,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
-                      <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                    </button>
-                    <button onClick={() => handleDelete(service.id)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(244,67,54,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                    {isOwn && (
+                      <button onClick={() => handleEdit(service)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(33,150,243,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                        <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(service.id, isOwn)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(244,67,54,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
                       <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                     </button>
                   </div>
@@ -766,6 +775,7 @@ const ServicesBrowse = ({ user, isAdmin, setPage, setEditingItem, setBuyingServi
     </div>
   );
 };
+
 const AddService = ({ user, setPage, editingItem, setEditingItem }) => {
   const [category, setCategory] = useState(editingItem?.category || "Airtime");
   const [jobTitle, setJobTitle] = useState(editingItem?.jobTitle || "");
@@ -916,7 +926,6 @@ const AddService = ({ user, setPage, editingItem, setEditingItem }) => {
     </div>
   );
 };
-
 const CryptoExchange = ({ user, buyingCrypto, setBuyingCrypto, setPage }) => {
   const [action, setAction] = useState("buy");
   const [selectedCoin, setSelectedCoin] = useState(CRYPTO_COINS[0]);
@@ -952,7 +961,7 @@ const CryptoExchange = ({ user, buyingCrypto, setBuyingCrypto, setPage }) => {
         title: `${action === "buy" ? "Buy" : "Sell"} ${amount} ${selectedCoin.symbol}`,
         price: nairaAmount,
         buyerId: user.uid,
-        sellerId: "Hnl2ncOnVtPWbnVTz3TcU2jJUXy1",
+        sellerId: ADMIN_UID,
         type: "crypto",
         cryptoAction: action,
         cryptoCoin: selectedCoin.name,
@@ -1053,8 +1062,8 @@ const TicketsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
     setPage("add-ticket");
   };
   
-  const handleDelete = async (ticketId) => {
-    if (!window.confirm("Delete this ticket? This cannot be undone!")) return;
+  const handleDelete = async (ticketId, isOwn) => {
+    if (!window.confirm(isOwn ? "Delete this ticket?" : "⚠️ FORCE DELETE this ticket? This cannot be undone!")) return;
     try {
       await deleteDoc(doc(db, "tickets", ticketId));
       alert("✅ Ticket deleted!");
@@ -1076,7 +1085,7 @@ const TicketsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
         title: ticket.title,
         price: ticket.price,
         buyerId: user.uid,
-        sellerId: ticket.sellerId,
+        sellerId: ticket.sellerId || ADMIN_UID,
         type: "ticket",
         ticketType: ticket.ticketType,
         status: "pending",
@@ -1109,48 +1118,54 @@ const TicketsBrowse = ({ user, isAdmin, setPage, setEditingItem }) => {
         </div>
       ) : (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))",gap:"14px"}}>
-          {filtered.map(t => (
-            <div key={t.id} style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",position:"relative"}}>
-              <div onClick={() => {
-                if (t.sellerId === user.uid) {
-                  alert("This is your own ticket!");
-                } else {
-                  handleBuyTicket(t);
-                }
-              }} className="card-hover" style={{cursor:"pointer"}}>
-                {t.imageUrl ? (
-                  <img src={t.imageUrl} alt={t.title} style={{width:"100%",height:"160px",objectFit:"cover"}} />
-                ) : (
-                  <div style={{width:"100%",height:"160px",background:t.ticketType==="Flight"?"linear-gradient(135deg, #E1F5FE 0%, #B3E5FC 100%)":"linear-gradient(135deg, #F3E5F5 0%, #E1BEE7 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <div style={{fontSize:"60px"}}>{t.ticketType === "Flight" ? "✈️" : "🎉"}</div>
+          {filtered.map(t => {
+            const isOwn = t.sellerId === user.uid;
+            return (
+              <div key={t.id} style={{background:"white",borderRadius:"14px",overflow:"hidden",boxShadow:"0 2px 10px rgba(0,0,0,0.08)",position:"relative"}}>
+                <div onClick={() => {
+                  if (t.sellerId === user.uid) {
+                    alert("This is your own ticket!");
+                  } else {
+                    handleBuyTicket(t);
+                  }
+                }} className="card-hover" style={{cursor:"pointer"}}>
+                  {t.imageUrl ? (
+                    <img src={t.imageUrl} alt={t.title} style={{width:"100%",height:"160px",objectFit:"cover"}} />
+                  ) : (
+                    <div style={{width:"100%",height:"160px",background:t.ticketType==="Flight"?"linear-gradient(135deg, #E1F5FE 0%, #B3E5FC 100%)":"linear-gradient(135deg, #F3E5F5 0%, #E1BEE7 100%)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <div style={{fontSize:"60px"}}>{t.ticketType === "Flight" ? "✈️" : "🎉"}</div>
+                    </div>
+                  )}
+                  <div style={{padding:"12px"}}>
+                    <div style={{display:"inline-block",padding:"3px 8px",background:"#F3E5F5",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#9C27B0",marginBottom:"6px",textTransform:"uppercase"}}>{t.ticketType}</div>
+                    <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50",lineHeight:"1.2"}}>{t.title}</h3>
+                    {t.eventDate && <p style={{fontSize:"12px",color:"#666",marginBottom:"4px",fontWeight:"600"}}>📅 {t.eventDate}</p>}
+                    {t.venue && <p style={{fontSize:"12px",color:"#666",marginBottom:"8px",fontWeight:"600"}}>📍 {t.venue}</p>}
+                    {t.airline && <p style={{fontSize:"12px",color:"#666",marginBottom:"8px",fontWeight:"600"}}>✈️ {t.airline}</p>}
+                    <p style={{fontSize:"20px",fontWeight:"900",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{t.price?.toLocaleString()}</p>
+                  </div>
+                </div>
+                {isAdmin && (
+                  <div style={{position:"absolute",top:"8px",right:"8px",display:"flex",gap:"6px"}}>
+                    {isOwn && (
+                      <button onClick={() => handleEdit(t)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(33,150,243,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                        <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(t.id, isOwn)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(244,67,54,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                      <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    </button>
                   </div>
                 )}
-                <div style={{padding:"12px"}}>
-                  <div style={{display:"inline-block",padding:"3px 8px",background:"#F3E5F5",borderRadius:"8px",fontSize:"9px",fontWeight:"800",color:"#9C27B0",marginBottom:"6px",textTransform:"uppercase"}}>{t.ticketType}</div>
-                  <h3 style={{fontSize:"14px",fontWeight:"800",marginBottom:"6px",color:"#2C3E50",lineHeight:"1.2"}}>{t.title}</h3>
-                  {t.eventDate && <p style={{fontSize:"12px",color:"#666",marginBottom:"4px",fontWeight:"600"}}>📅 {t.eventDate}</p>}
-                  {t.venue && <p style={{fontSize:"12px",color:"#666",marginBottom:"8px",fontWeight:"600"}}>📍 {t.venue}</p>}
-                  {t.airline && <p style={{fontSize:"12px",color:"#666",marginBottom:"8px",fontWeight:"600"}}>✈️ {t.airline}</p>}
-                  <p style={{fontSize:"20px",fontWeight:"900",background:"linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>₦{t.price?.toLocaleString()}</p>
-                </div>
               </div>
-              {isAdmin && t.sellerId === user.uid && (
-                <div style={{position:"absolute",top:"8px",right:"8px",display:"flex",gap:"6px"}}>
-                  <button onClick={() => handleEdit(t)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(33,150,243,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
-                    <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                  </button>
-                  <button onClick={() => handleDelete(t.id)} style={{width:"32px",height:"32px",borderRadius:"50%",background:"rgba(244,67,54,0.9)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
-                    <svg width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 };
+
 const AddTicket = ({ user, setPage, editingItem, setEditingItem }) => {
   const [ticketType, setTicketType] = useState(editingItem?.ticketType || "Event");
   const [title, setTitle] = useState(editingItem?.title || "");
@@ -1285,7 +1300,7 @@ const OrdersPage = ({ user, isAdmin }) => {
     const myQ = query(collection(db, "orders"), where("buyerId", "==", user.uid), orderBy("createdAt", "desc"));
     const myUnsub = onSnapshot(myQ, (snap) => { setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
     if (isAdmin) {
-      const customerQ = query(collection(db, "orders"), where("sellerId", "==", user.uid), orderBy("createdAt", "desc"));
+      const customerQ = query(collection(db, "orders"), where("sellerId", "==", ADMIN_UID), orderBy("createdAt", "desc"));
       const customerUnsub = onSnapshot(customerQ, (snap) => { setCustomerOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
       return () => { myUnsub(); customerUnsub(); };
     }
@@ -1296,9 +1311,10 @@ const OrdersPage = ({ user, isAdmin }) => {
     if (!window.confirm("Confirm received?")) return;
     try {
       await updateDoc(doc(db, "orders", order.id), { status: "completed", completedAt: serverTimestamp() });
-      const sellerSnap = await getDoc(doc(db, "users", order.sellerId));
+      const sellerId = order.sellerId || ADMIN_UID;
+      const sellerSnap = await getDoc(doc(db, "users", sellerId));
       const sellerWallet = sellerSnap.data()?.wallet || 0;
-      await updateDoc(doc(db, "users", order.sellerId), {
+      await updateDoc(doc(db, "users", sellerId), {
         wallet: sellerWallet + order.price,
         totalSales: (sellerSnap.data()?.totalSales || 0) + 1
       });
@@ -1385,7 +1401,6 @@ const OrdersPage = ({ user, isAdmin }) => {
     </div>
   );
 };
-
 const MoneyTransfer = ({ user }) => {
   const [fromCountry, setFromCountry] = useState(COUNTRIES[0]);
   const [toCountry, setToCountry] = useState(COUNTRIES[1]);

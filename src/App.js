@@ -1300,10 +1300,22 @@ const OrdersPage = ({ user, isAdmin }) => {
     const myQ = query(collection(db, "orders"), where("buyerId", "==", user.uid), orderBy("createdAt", "desc"));
     const myUnsub = onSnapshot(myQ, (snap) => { setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
     if (isAdmin) {
-      const customerQ = query(collection(db, "orders"), where("sellerId", "==", ADMIN_UID), orderBy("createdAt", "desc"));
-      const customerUnsub = onSnapshot(customerQ, (snap) => { setCustomerOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
-      return () => { myUnsub(); customerUnsub(); };
-    }
+  const customerQ = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+  const customerUnsub = onSnapshot(customerQ, (snap) => { 
+    const allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Show orders where YOU are the seller OR buyer is NOT you (to exclude your own purchases)
+    const customerOrdersList = allOrders.filter(order => {
+      // Don't show orders where YOU are the buyer
+      if (order.buyerId === user.uid) return false;
+      // Show all other orders (these are customer orders)
+      return true;
+    });
+    setCustomerOrders(customerOrdersList);
+  });
+  return () => { myUnsub(); customerUnsub(); };
+}
+
+  
     return () => myUnsub();
   }, [user, isAdmin]);
   
